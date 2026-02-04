@@ -1,11 +1,11 @@
 /**
  * API Service para comunicação com o backend
- * Base URL: https://ilungigestoraapi-production.up.railway.app/
+ * Base URL: https://ilungi-gestora-api.fly.dev/
  */
 
 // Base URL configurable via Vite env `VITE_API_BASE_URL`.
-// Default points to production Railway app. Ensure single `/api` context-path.
-const RAW_BASE = (typeof process !== 'undefined' && (process as any).env && (process as any).env.VITE_API_BASE_URL) || (typeof window !== 'undefined' && (window as any).VITE_API_BASE_URL) || 'https://ilungigestoraapi-production.up.railway.app';
+// Default points to production Fly.dev app. Ensure single `/api` context-path.
+const RAW_BASE = (typeof process !== 'undefined' && (process as any).env && (process as any).env.VITE_API_BASE_URL) || (typeof window !== 'undefined' && (window as any).VITE_API_BASE_URL) || 'https://ilungi-gestora-api.fly.dev';
 const API_BASE = RAW_BASE.replace(/\/$/, '') + '/api';
 
 // Tipo para armazenar token de autenticação
@@ -39,26 +39,45 @@ const getHeaders = () => {
 };
 
 const handleResponse = async (response: Response) => {
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Erro desconhecido' }));
-    throw new Error(error.message || `Erro HTTP ${response.status}`);
+  let data: any;
+  try {
+    data = await response.json();
+  } catch (e) {
+    // Se não conseguir fazer parse do JSON
+    if (!response.ok) {
+      throw new Error(`Erro HTTP ${response.status}`);
+    }
+    return { success: true, status: response.status };
   }
-  return response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || data.error || `Erro HTTP ${response.status}`);
+  }
+  return data;
 };
 
 // ============ AUTENTICAÇÃO ============
 export const apiAuth = {
   login: async (email: string, password?: string) => {
-    const response = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ email, password: password || '' }),
-    });
-    const data = await handleResponse(response);
-    if (data.token) {
-      setAuthToken(data.token);
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password: password || '' }),
+      });
+      const data = await handleResponse(response);
+      // A API pode retornar 'token' ou 'jwt'
+      if (data.token) {
+        setAuthToken(data.token);
+      } else if (data.jwt) {
+        setAuthToken(data.jwt);
+      }
+      return data;
+    } catch (error: any) {
+      throw new Error(error.message || 'Erro ao fazer login');
     }
-    return data;
   },
 
   logout: async () => {
@@ -67,12 +86,24 @@ export const apiAuth = {
   },
 
   register: async (email: string, name: string, password?: string) => {
-    const response = await fetch(`${API_BASE}/auth/register`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ email, name, password: password || '' }),
-    });
-    return handleResponse(response);
+    try {
+      const response = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, name, password: password || '' }),
+      });
+      const data = await handleResponse(response);
+      if (data.token) {
+        setAuthToken(data.token);
+      } else if (data.jwt) {
+        setAuthToken(data.jwt);
+      }
+      return data;
+    } catch (error: any) {
+      throw new Error(error.message || 'Erro ao registrar');
+    }
   },
 
   getCurrentUser: async () => {
@@ -306,4 +337,56 @@ export const apiHealth = {
     if (!response.ok) throw new Error(`Ping failed ${response.status}`);
     return response.text();
   },
+};
+// ============ MAPPERS / TRANSFORMADORES ============
+/**
+ * Mapear resposta de utilizador da API para o formato da aplicação
+ */
+export const mapUserFromAPI = (apiUser: any) => {
+  return {
+    id: String(apiUser.id),
+    email: apiUser.email || '',
+    name: apiUser.name || apiUser.username || 'Utilizador',
+    role: apiUser.role || 'EMPLOYEE',
+    avatar: apiUser.avatar || null,
+    lastLogin: apiUser.lastLogin || null,
+    createdAt: apiUser.createdAt || new Date().toISOString(),
+    updatedAt: apiUser.updatedAt || new Date().toISOString(),
+  };
+};
+
+/**
+ * Mapear resposta de tarefa da API para o formato da aplicação
+ */
+export const mapTaskFromAPI = (apiTask: any) => {
+  return {
+    id: String(apiTask.id),
+    title: apiTask.title || '',
+    description: apiTask.description || '',
+    status: apiTask.status || 'PENDENTE',
+    priority: apiTask.priority || 'MEDIA',
+    responsibleId: String(apiTask.responsibleId || apiTask.userId || ''),
+    responsibleName: apiTask.responsibleName || apiTask.userName || '',
+    deliveryDate: apiTask.deliveryDate || new Date().toISOString(),
+    startDate: apiTask.startDate || new Date().toISOString(),
+    intervenientes: Array.isArray(apiTask.intervenientes) ? apiTask.intervenientes.map(String) : [],
+    comments: Array.isArray(apiTask.comments) ? apiTask.comments : [],
+    attachments: Array.isArray(apiTask.attachments) ? apiTask.attachments : [],
+    createdAt: apiTask.createdAt || new Date().toISOString(),
+    updatedAt: apiTask.updatedAt || new Date().toISOString(),
+    closedAt: apiTask.closedAt || null,
+  };
+};
+
+/**
+ * Mapear resposta de comentário da API para o formato da aplicação
+ */
+export const mapCommentFromAPI = (apiComment: any) => {
+  return {
+    id: String(apiComment.id),
+    userId: String(apiComment.userId || ''),
+    userName: apiComment.userName || 'Utilizador',
+    text: apiComment.text || '',
+    timestamp: apiComment.timestamp || apiComment.createdAt || new Date().toISOString(),
+  };
 };

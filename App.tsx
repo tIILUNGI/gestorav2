@@ -13,7 +13,7 @@ import {
 } from './types';
 import { MOCK_USERS, TRANSLATIONS, STATUS_COLORS, INITIAL_TASKS } from './constants';
 import { getSmartNotification } from './services/geminiService';
-import { setAuthToken, getAuthToken, apiAuth, apiTasks, apiUsers, apiComments } from './services/apiService';
+import { setAuthToken, getAuthToken, apiAuth, apiTasks, apiUsers, apiComments, mapTaskFromAPI, mapUserFromAPI, mapCommentFromAPI } from './services/apiService';
 import { logger } from './services/logger';
 import { 
   LayoutDashboard, 
@@ -126,9 +126,14 @@ export default function App() {
   const loadDataFromAPI = async () => {
     try {
       // Carregar tarefas da API
-      const tasksData = await apiTasks.getAll();
-      if (tasksData && Array.isArray(tasksData)) {
-        saveTasks(tasksData);
+      const tasksResponse = await apiTasks.getAll();
+      if (tasksResponse) {
+        const tasksList = Array.isArray(tasksResponse) ? tasksResponse : (tasksResponse.data || tasksResponse.tasks || []);
+        const mappedTasks = tasksList.map((t: any) => mapTaskFromAPI(t));
+        if (mappedTasks.length > 0) {
+          saveTasks(mappedTasks);
+          logger.debug('API', 'Tarefas carregadas da API com sucesso', mappedTasks.length);
+        }
       }
     } catch (error) {
       logger.debug('API', 'Não foi possível carregar tarefas da API, usando dados locais', error);
@@ -136,9 +141,14 @@ export default function App() {
 
     try {
       // Carregar utilizadores da API
-      const usersData = await apiUsers.getAll();
-      if (usersData && Array.isArray(usersData)) {
-        saveUsers(usersData);
+      const usersResponse = await apiUsers.getAll();
+      if (usersResponse) {
+        const usersList = Array.isArray(usersResponse) ? usersResponse : (usersResponse.data || usersResponse.users || []);
+        const mappedUsers = usersList.map((u: any) => mapUserFromAPI(u));
+        if (mappedUsers.length > 0) {
+          saveUsers(mappedUsers);
+          logger.debug('API', 'Utilizadores carregados da API com sucesso', mappedUsers.length);
+        }
       }
     } catch (error) {
       logger.debug('API', 'Não foi possível carregar utilizadores da API, usando dados locais', error);
@@ -174,18 +184,22 @@ export default function App() {
       // Tentar enviar para API
       const response = await apiComments.create(taskId, text);
       if (response && response.id) {
-        // Atualizar localmente com resposta da API
-        const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, comments: [...(t.comments || []), response], updatedAt: new Date().toISOString() } : t);
+        // Mapear e atualizar localmente com resposta da API
+        const mappedComment = mapCommentFromAPI(response);
+        const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, comments: [...(t.comments || []), mappedComment], updatedAt: new Date().toISOString() } : t);
         saveTasks(updatedTasks);
+        logger.debug('Comment', 'Comentário criado na API com sucesso');
+        addSystemActivity({ userId: user.id, userName: user.name, action: 'commented', entityType: 'task', entityId: taskId, entityTitle: tasks.find(x => x.id === taskId)?.title });
+        return;
       }
     } catch (apiError) {
       logger.warn('Comment', 'API comentário falhou, salvando localmente...', apiError);
-      // Fallback: salvar localmente se API falhar
-      const comment = { id: 'C-' + Math.random().toString(36).substr(2, 6).toUpperCase(), userId: user.id, userName: user.name, text, timestamp: new Date().toISOString() };
-      const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, comments: [...(t.comments || []), comment], updatedAt: new Date().toISOString() } : t);
-      saveTasks(updatedTasks);
     }
     
+    // Fallback: salvar localmente se API falhar
+    const comment = { id: 'C-' + Math.random().toString(36).substr(2, 6).toUpperCase(), userId: user.id, userName: user.name, text, timestamp: new Date().toISOString() };
+    const updatedTasks = tasks.map(t => t.id === taskId ? { ...t, comments: [...(t.comments || []), comment], updatedAt: new Date().toISOString() } : t);
+    saveTasks(updatedTasks);
     addSystemActivity({ userId: user.id, userName: user.name, action: 'commented', entityType: 'task', entityId: taskId, entityTitle: tasks.find(x => x.id === taskId)?.title });
   };
 
@@ -908,25 +922,44 @@ const LoginPage = () => {
                   const updated = tasks.map(t => t.id === editTask.id ? { ...t, title: fd.get('title') as string, description: fd.get('description') as string, startDate: start, deadlineValue: val, deadlineType: type, deliveryDate: delivery.toISOString(), responsibleId: ids[0], intervenientes: ids.slice(1), updatedAt: new Date().toISOString() } : t);
                   
                   try {
-                    await apiTasks.update(editTask.id, updated.find(t => t.id === editTask.id)!);
+                    const taskToUpdate = updated.find(t => t.id === editTask.id)!;
+                    const apiResponse = await apiTasks.update(editTask.id, taskToUpdate);
+                    if (apiResponse && apiResponse.id) {
+                      // Se a API retornar dados atualizados, usar esses
+                      const mappedTask = mapTaskFromAPI(apiResponse);
+                      saveTasks(updated.map(t => t.id === editTask.id ? mappedTask : t));
+                      logger.debug('Task', 'Tarefa atualizada na API com sucesso');
+                    } else {
+                      saveTasks(updated);
+                    }
                   } catch (error) {
-                    logger.warn('Task', 'Erro ao atualizar na API, atualizando localmente...');
+                    logger.warn('Task', 'Erro ao atualizar na API, atualizando localmente...', error);
+                    saveTasks(updated);
                   }
                   
-                  saveTasks(updated);
                   addSystemActivity({ userId: user!.id, userName: user!.name, action: 'updated', entityType: 'task', entityId: editTask.id, entityTitle: fd.get('title') as string });
                   setEditingTaskId(null); setIsTaskModalOpen(false);
                 } else {
                   const newTask: Task = { id: 'T-' + Math.random().toString(36).substr(2, 6).toUpperCase(), title: fd.get('title') as string, description: fd.get('description') as string, startDate: start, deadlineValue: val, deadlineType: type, deliveryDate: delivery.toISOString(), responsibleId: ids[0], intervenientes: ids.slice(1), status: TaskStatus.ABERTO, comments: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
                   
                   try {
-                    await apiTasks.create(newTask);
+                    const apiResponse = await apiTasks.create(newTask);
+                    if (apiResponse && apiResponse.id) {
+                      // Se a API retornar a tarefa criada, usar esses dados
+                      const mappedTask = mapTaskFromAPI(apiResponse);
+                      saveTasks([mappedTask, ...tasks]);
+                      logger.debug('Task', 'Tarefa criada na API com sucesso');
+                      addSystemActivity({ userId: user!.id, userName: user!.name, action: 'created', entityType: 'task', entityId: mappedTask.id, entityTitle: mappedTask.title });
+                    } else {
+                      saveTasks([newTask, ...tasks]);
+                      addSystemActivity({ userId: user!.id, userName: user!.name, action: 'created', entityType: 'task', entityId: newTask.id, entityTitle: newTask.title });
+                    }
                   } catch (error) {
-                    logger.warn('Task', 'Erro ao criar na API, criando localmente...');
+                    logger.warn('Task', 'Erro ao criar na API, criando localmente...', error);
+                    saveTasks([newTask, ...tasks]);
+                    addSystemActivity({ userId: user!.id, userName: user!.name, action: 'created', entityType: 'task', entityId: newTask.id, entityTitle: newTask.title });
                   }
                   
-                  saveTasks([newTask, ...tasks]);
-                  addSystemActivity({ userId: user!.id, userName: user!.name, action: 'created', entityType: 'task', entityId: newTask.id, entityTitle: newTask.title });
                   setIsTaskModalOpen(false);
                 }
                 setTaskFormDeliveryPreview('');
