@@ -18,7 +18,7 @@ echo    Colar: import { runAPITests } from './services/apiTest.ts'; runAPITests(
 echo.
 echo 3. VARIÁVEIS DE AMBIENTE
 echo    Copiar .env.example para .env.local (opcional)
-echo    VITE_API_BASE_URL=https://ilungi-gestora-api.fly.dev
+echo    VITE_API_BASE_URL=https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 echo.
 echo 4. CREDENCIAIS DE TESTE
 echo    Admin: admin@example.com / admin123

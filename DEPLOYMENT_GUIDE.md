@@ -112,7 +112,7 @@ cd ..
 npm install
 
 # Configurar variáveis
-echo "VITE_API_BASE_URL=https://ilungigestoraapi-production.up.railway.app" > .env.production
+echo "VITE_API_BASE_URL=https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app" > .env.production
 
 # Desenvolvimento
 npm run dev
@@ -195,7 +195,7 @@ Fase 4: Pico
 
 ```bash
 #!/bin/bash
-API_URL="https://ilungigestoraapi-production.up.railway.app"
+API_URL="https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app"
 
 # Login
 TOKEN=$(curl -X POST $API_URL/auth/login \
@@ -231,7 +231,7 @@ netstat -an | grep 3306
 
 ### Frontend não encontra API
 - Verificar `VITE_API_BASE_URL` em `.env`
-- Testar URL diretamente: `curl https://ilungigestoraapi-production.up.railway.app/api/tasks`
+- Testar URL diretamente: `curl https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app/api/tasks`
 - Verificar CORS headers no backend
 
 ### JWT Token expirado
@@ -322,7 +322,7 @@ LOGGING_LEVEL_COM_GESTORA=INFO
 
 ## 📞 Suporte e Documentação
 
-- **API Docs**: `https://ilungigestoraapi-production.up.railway.app/api/swagger-ui.html` (TODO)
+- **API Docs**: `https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app/api/swagger-ui.html` (TODO)
 - **Logs**: `/logs/gestora-backend.log`
 - **Status**: Verificar `systemActivities` no frontend
 

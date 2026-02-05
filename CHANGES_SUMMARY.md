@@ -97,7 +97,7 @@ build: {
 
 #### .env.production (NOVO)
 ```env
-VITE_API_BASE_URL=https://ilungigestoraapi-production.up.railway.app
+VITE_API_BASE_URL=https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 JWT_SECRET=sua_chave_segura_min_32_caracteres
 SPRING_DATASOURCE_URL=jdbc:mysql://host:3306/gestora_db?useSSL=true
 SERVER_PORT=8080
@@ -107,7 +107,7 @@ LOGGING_LEVEL_COM_GESTORA=INFO
 
 #### .env.local (ATUALIZADO)
 ```env
-VITE_API_BASE_URL=https://ilungigestoraapi-production.up.railway.app
+VITE_API_BASE_URL=https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 GEMINI_API_KEY=AIzaSyBqhj7eVLqXbCvCAXokovOH2pVwPHNsELU
 SPRING_DATASOURCE_USERNAME=root
 SPRING_DATASOURCE_PASSWORD=root

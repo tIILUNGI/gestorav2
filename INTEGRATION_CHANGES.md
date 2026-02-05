@@ -6,7 +6,7 @@
 ---
 
 ## 🎯 Objetivo Concluído
-Refazer toda a integração da aplicação para funcionar com a API hospedada em **https://ilungi-gestora-api.fly.dev**
+Refazer toda a integração da aplicação para funcionar com a API hospedada em **https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app**
 
 ---
 
@@ -15,8 +15,8 @@ Refazer toda a integração da aplicação para funcionar com a API hospedada em
 ### 1. **Serviço de API (`services/apiService.ts`)**
 
 #### ✅ URL da API Atualizada
-- **Antes:** `https://ilungigestoraapi-production.up.railway.app`
-- **Depois:** `https://ilungi-gestora-api.fly.dev`
+- **Antes:** `https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app`
+- **Depois:** `https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app`
 
 #### ✅ Melhorias no Tratamento de Respostas
 - Implementado `handleResponse` mais robusto
@@ -66,7 +66,7 @@ loadDataFromAPI():
 ### 3. **Variáveis de Ambiente (`.env.example`)**
 
 #### ✅ Atualizado
-- `VITE_API_BASE_URL` configurado para `https://ilungi-gestora-api.fly.dev`
+- `VITE_API_BASE_URL` configurado para `https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app`
 - Exemplos de hosts locais incluídos
 - Documentação clara
 
@@ -269,7 +269,7 @@ runAPITests().then(results => console.table(results));
 **Causa:** Problema de conectividade com a API
 **Solução:** 
 1. Verificar URL da API em .env
-2. Validar conectividade: `curl https://ilungi-gestora-api.fly.dev/api/health`
+2. Validar conectividade: `curl https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app/api/health`
 3. Verificar console do navegador para mais detalhes
 
 ### Erro: "Unauthorized"

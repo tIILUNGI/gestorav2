@@ -4,7 +4,7 @@
 
 A aplicação **GestoraPro** foi totalmente reconfigurada para usar a API hospedada em:
 ```
-https://ilungi-gestora-api.fly.dev
+https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 ```
 
 ---
@@ -21,7 +21,7 @@ npm install
 Se quiser usar um servidor de API diferente, edite ou crie um ficheiro `.env.local`:
 
 ```env
-VITE_API_BASE_URL=https://ilungi-gestora-api.fly.dev
+VITE_API_BASE_URL=https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 GEMINI_API_KEY=sua_chave_aqui
 ```
 
@@ -168,7 +168,7 @@ Verá um relatório detalhado com:
 
 ### "A API não responde"
 1. Verificar internet
-2. Validar URL: https://ilungi-gestora-api.fly.dev
+2. Validar URL: https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 3. Verificar console do navegador (F12)
 4. Executar `runAPITests()`
 
@@ -262,7 +262,7 @@ npm run build
 
 A API automaticamente usa:
 ```
-https://ilungi-gestora-api.fly.dev
+https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 ```
 
 ---

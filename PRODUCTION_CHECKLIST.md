@@ -119,7 +119,7 @@
 
 ## 📞 Contatos e Suporte
 
-**API Base**: https://ilungigestoraapi-production.up.railway.app  
+**API Base**: https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app  
 **Frontend**: http://localhost:5173 (dev)  
 **Database**: MySQL 8.0+  
 **Backend**: Spring Boot 2.7.14  

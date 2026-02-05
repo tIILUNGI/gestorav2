@@ -198,7 +198,7 @@ Consulte [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) para instruções completa
 
 ### .env.production
 ```env
-VITE_API_BASE_URL=https://ilungigestoraapi-production.up.railway.app
+VITE_API_BASE_URL=https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 JWT_SECRET=<chave-segura-32-caracteres>
 SPRING_DATASOURCE_URL=jdbc:mysql://host:3306/gestora_db
 SPRING_DATASOURCE_USERNAME=gestora
@@ -224,7 +224,7 @@ SPRING_DATASOURCE_PASSWORD=senha_segura
 
 ## 🔗 Links Importantes
 
-- **API Live**: https://ilungigestoraapi-production.up.railway.app
+- **API Live**: https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 - **Frontend**: http://localhost:5173 (desenvolvimento)
 - **Documentação Detalhada**: [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)
 - **Guia Rápido**: [QUICK_START.md](./QUICK_START.md)

@@ -1,11 +1,11 @@
 /**
  * API Service para comunicação com o backend
- * Base URL: https://ilungi-gestora-api.fly.dev/
+ * Base URL: https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app/
  */
 
 // Base URL configurable via Vite env `VITE_API_BASE_URL`.
-// Default points to production Fly.dev app. Ensure single `/api` context-path.
-const RAW_BASE = (typeof process !== 'undefined' && (process as any).env && (process as any).env.VITE_API_BASE_URL) || (typeof window !== 'undefined' && (window as any).VITE_API_BASE_URL) || 'https://ilungi-gestora-api.fly.dev';
+// Default points to current ngrok; backend does NOT include `/api` prefix.
+const RAW_BASE = (typeof process !== 'undefined' && (process as any).env && (process as any).env.VITE_API_BASE_URL) || (typeof window !== 'undefined' && (window as any).VITE_API_BASE_URL) || 'https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app';
 const API_BASE = RAW_BASE.replace(/\/$/, '');
 
 // Tipo para armazenar token de autenticação
@@ -14,15 +14,15 @@ let authToken: string | null = null;
 export const setAuthToken = (token: string | null) => {
   authToken = token;
   if (token) {
-    localStorage.setItem('gestora_api_token', token);
+    sessionStorage.setItem('gestora_api_token', token);
   } else {
-    localStorage.removeItem('gestora_api_token');
+    sessionStorage.removeItem('gestora_api_token');
   }
 };
 
 export const getAuthToken = () => {
   if (!authToken) {
-    authToken = localStorage.getItem('gestora_api_token');
+    authToken = sessionStorage.getItem('gestora_api_token');
   }
   return authToken;
 };
@@ -122,7 +122,7 @@ export const apiAuth = {
   },
 
   getCurrentUser: async () => {
-    const response = await fetch(`${API_BASE}/auth/me`, {
+    const response = await fetch(`${API_BASE}/auth/eu`, {
       method: 'GET',
       headers: getHeaders(),
     });
@@ -133,7 +133,7 @@ export const apiAuth = {
 // ============ TAREFAS ============
 export const apiTasks = {
   getAll: async () => {
-    const response = await fetch(`${API_BASE}/tasks`, {
+    const response = await fetch(`${API_BASE}/tarefas`, {
       method: 'GET',
       headers: getHeaders(),
     });
@@ -141,7 +141,7 @@ export const apiTasks = {
   },
 
   getById: async (id: string) => {
-    const response = await fetch(`${API_BASE}/tasks/${id}`, {
+    const response = await fetch(`${API_BASE}/tarefas/${id}`, {
       method: 'GET',
       headers: getHeaders(),
     });
@@ -149,7 +149,7 @@ export const apiTasks = {
   },
 
   create: async (taskData: any) => {
-    const response = await fetch(`${API_BASE}/tasks`, {
+    const response = await fetch(`${API_BASE}/tarefas`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(taskData),
@@ -158,7 +158,7 @@ export const apiTasks = {
   },
 
   update: async (id: string, taskData: any) => {
-    const response = await fetch(`${API_BASE}/tasks/${id}`, {
+    const response = await fetch(`${API_BASE}/tarefas/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(taskData),
@@ -167,7 +167,7 @@ export const apiTasks = {
   },
 
   delete: async (id: string) => {
-    const response = await fetch(`${API_BASE}/tasks/${id}`, {
+    const response = await fetch(`${API_BASE}/tarefas/${id}`, {
       method: 'DELETE',
       headers: getHeaders(),
     });
@@ -175,7 +175,7 @@ export const apiTasks = {
   },
 
   updateStatus: async (id: string, status: string) => {
-    const response = await fetch(`${API_BASE}/tasks/${id}/status`, {
+    const response = await fetch(`${API_BASE}/tarefas/${id}/status`, {
       method: 'PATCH',
       headers: getHeaders(),
       body: JSON.stringify({ status }),
@@ -187,7 +187,7 @@ export const apiTasks = {
 // ============ UTILIZADORES ============
 export const apiUsers = {
   getAll: async () => {
-    const response = await fetch(`${API_BASE}/users`, {
+    const response = await fetch(`${API_BASE}/admin/usuarios`, {
       method: 'GET',
       headers: getHeaders(),
     });
@@ -195,7 +195,7 @@ export const apiUsers = {
   },
 
   getById: async (id: string) => {
-    const response = await fetch(`${API_BASE}/users/${id}`, {
+    const response = await fetch(`${API_BASE}/admin/users/${id}`, {
       method: 'GET',
       headers: getHeaders(),
     });
@@ -203,7 +203,7 @@ export const apiUsers = {
   },
 
   create: async (userData: any) => {
-    const response = await fetch(`${API_BASE}/users`, {
+    const response = await fetch(`${API_BASE}/admin/usuarios`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(userData),
@@ -212,7 +212,7 @@ export const apiUsers = {
   },
 
   update: async (id: string, userData: any) => {
-    const response = await fetch(`${API_BASE}/users/${id}`, {
+    const response = await fetch(`${API_BASE}/admin/users/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(userData),
@@ -221,7 +221,7 @@ export const apiUsers = {
   },
 
   delete: async (id: string) => {
-    const response = await fetch(`${API_BASE}/users/${id}`, {
+    const response = await fetch(`${API_BASE}/admin/users/${id}`, {
       method: 'DELETE',
       headers: getHeaders(),
     });
@@ -229,8 +229,8 @@ export const apiUsers = {
   },
 
   updateAvatar: async (id: string, avatarData: string) => {
-    const response = await fetch(`${API_BASE}/users/${id}/avatar`, {
-      method: 'PUT',
+    const response = await fetch(`${API_BASE}/users/${id}/profile`, {
+      method: 'PATCH',
       headers: getHeaders(),
       body: JSON.stringify({ avatar: avatarData }),
     });

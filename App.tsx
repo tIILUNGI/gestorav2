@@ -102,8 +102,8 @@ export default function App() {
     setUsers(savedUsers);
     setSystemActivities(savedActivities);
     
-    // Restaurar token de autenticação (sem auto-login)
-    const savedToken = localStorage.getItem('gestora_api_token');
+    // Restaurar token de autenticação
+    const savedToken = sessionStorage.getItem('gestora_api_token');
     if (savedToken) {
       setAuthToken(savedToken);
     } else {
@@ -118,7 +118,31 @@ export default function App() {
       return;
     }
 
-    // Forçar tela de login ao abrir o sistema
+    if (savedToken) {
+      (async () => {
+        try {
+          const apiUser = await apiAuth.getCurrentUser();
+          const normalizedUser = {
+            ...apiUser,
+            id: apiUser?.id ?? apiUser?.userId,
+            email: apiUser?.email,
+            name: apiUser?.name ?? apiUser?.username,
+            role: apiUser?.role ?? UserRole.EMPLOYEE
+          };
+          const mapped = mapUserFromAPI(normalizedUser);
+          setUser(mapped);
+          setView('app');
+          await loadDataFromAPI();
+        } catch (error) {
+          setAuthToken(null);
+          setUser(null);
+          setView('login');
+        }
+      })();
+      return;
+    }
+
+    // Sem token: ir para login
     setUser(null);
     setView('login');
   }, []);
@@ -177,6 +201,8 @@ export default function App() {
     localStorage.setItem('gestora_users', JSON.stringify(newUsers));
   };
 
+  const isLocalTaskId = (id: string) => id.toUpperCase().startsWith('T-');
+
   const addComment = async (taskId: string, text: string) => {
     if (!user) return;
     
@@ -207,8 +233,10 @@ export default function App() {
     addSystemActivity({ userId: user!.id, userName: user!.name, action: 'deleted', entityType: 'task', entityId: task.id, entityTitle: task.title });
     
     try {
-      // Tentar deletar na API
-      await apiTasks.delete(task.id);
+      // Tentar deletar na API apenas se não for tarefa local
+      if (!isLocalTaskId(task.id)) {
+        await apiTasks.delete(task.id);
+      }
     } catch (apiError) {
       logger.warn('Task', 'Erro ao deletar na API, deletando localmente...', apiError);
     }
@@ -257,7 +285,10 @@ export default function App() {
     }
     
     try {
-      await apiTasks.updateStatus(task.id, nextStatus);
+      const isLocalId = typeof task.id === 'string' && task.id.toUpperCase().startsWith('T-');
+      if (!isLocalId) {
+        await apiTasks.updateStatus(task.id, nextStatus);
+      }
     } catch (error) {
       logger.warn('Task', 'Erro ao atualizar status na API, atualizado localmente...', error);
     }
@@ -386,7 +417,8 @@ const LoginPage = () => {
         name: apiUser?.name ?? apiUser?.username,
         role: apiUser?.role ?? UserRole.EMPLOYEE
       };
-      setUser(mapUserFromAPI(normalizedUser));
+      const mappedUser = mapUserFromAPI(normalizedUser);
+      setUser(mappedUser);
       setView('app');
       await loadDataFromAPI();
     } catch (apiError: any) {
@@ -1030,12 +1062,16 @@ const LoginPage = () => {
                   
                   try {
                     const taskToUpdate = updated.find(t => t.id === editTask.id)!;
-                    const apiResponse = await apiTasks.update(editTask.id, taskToUpdate);
-                    if (apiResponse && apiResponse.id) {
-                      // Se a API retornar dados atualizados, usar esses
-                      const mappedTask = mapTaskFromAPI(apiResponse);
-                      saveTasks(updated.map(t => t.id === editTask.id ? mappedTask : t));
-                      logger.debug('Task', 'Tarefa atualizada na API com sucesso');
+                    if (!isLocalTaskId(editTask.id)) {
+                      const apiResponse = await apiTasks.update(editTask.id, taskToUpdate);
+                      if (apiResponse && apiResponse.id) {
+                        // Se a API retornar dados atualizados, usar esses
+                        const mappedTask = mapTaskFromAPI(apiResponse);
+                        saveTasks(updated.map(t => t.id === editTask.id ? mappedTask : t));
+                        logger.debug('Task', 'Tarefa atualizada na API com sucesso');
+                      } else {
+                        saveTasks(updated);
+                      }
                     } else {
                       saveTasks(updated);
                     }
@@ -1050,7 +1086,9 @@ const LoginPage = () => {
                   const newTask: Task = { id: 'T-' + Math.random().toString(36).substr(2, 6).toUpperCase(), title: fd.get('title') as string, description: fd.get('description') as string, startDate: start, deadlineValue: val, deadlineType: type, deliveryDate: delivery.toISOString(), responsibleId: ids[0], intervenientes: ids.slice(1), status: TaskStatus.ABERTO, comments: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
                   
                   try {
-                    const apiResponse = await apiTasks.create(newTask);
+                    // Tentar criar na API sem enviar o id local
+                    const { id: _localId, ...payload } = newTask as any;
+                    const apiResponse = await apiTasks.create(payload);
                     if (apiResponse && apiResponse.id) {
                       // Se a API retornar a tarefa criada, usar esses dados
                       const mappedTask = mapTaskFromAPI(apiResponse);

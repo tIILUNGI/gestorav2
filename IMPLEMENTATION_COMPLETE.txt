@@ -10,8 +10,8 @@ Versão: 1.0.0
 ================================
 
 ✅ 1. URL da API Atualizada
-   Antes: https://ilungigestoraapi-production.up.railway.app
-   Depois: https://ilungi-gestora-api.fly.dev
+   Antes: https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
+   Depois: https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 
 ✅ 2. Serviço de API Melhorado (services/apiService.ts)
    - Handleamento robusto de respostas
@@ -209,7 +209,7 @@ Production Build:
   npm run build
 
 A aplicação automaticamente usa:
-  https://ilungi-gestora-api.fly.dev
+  https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app
 
 Para usar servidor diferente:
   VITE_API_BASE_URL=https://seu-servidor.com

@@ -2,7 +2,7 @@
 
 ## Configuração da API
 
-**Base URL:** `https://ilungi-gestora-api.fly.dev/api`
+**Base URL:** `https://b44f-2c0f-f888-a180-946c-8939-147d-5111-65ca.ngrok-free.app/api`
 
 A aplicação foi configurada para se conectar com a API hospedada em Fly.dev.
 
