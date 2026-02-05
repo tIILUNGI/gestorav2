@@ -133,7 +133,7 @@ export const apiAuth = {
 // ============ TAREFAS ============
 export const apiTasks = {
   getAll: async () => {
-    const response = await fetch(`${API_BASE}/tarefas`, {
+    const response = await fetch(`${API_BASE}/tasks`, {
       method: 'GET',
       headers: getHeaders(),
     });
@@ -141,7 +141,7 @@ export const apiTasks = {
   },
 
   getById: async (id: string) => {
-    const response = await fetch(`${API_BASE}/tarefas/${id}`, {
+    const response = await fetch(`${API_BASE}/tasks/${id}`, {
       method: 'GET',
       headers: getHeaders(),
     });
@@ -149,7 +149,7 @@ export const apiTasks = {
   },
 
   create: async (taskData: any) => {
-    const response = await fetch(`${API_BASE}/tarefas`, {
+    const response = await fetch(`${API_BASE}/tasks`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(taskData),
@@ -158,7 +158,7 @@ export const apiTasks = {
   },
 
   update: async (id: string, taskData: any) => {
-    const response = await fetch(`${API_BASE}/tarefas/${id}`, {
+    const response = await fetch(`${API_BASE}/tasks/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(taskData),
@@ -167,7 +167,7 @@ export const apiTasks = {
   },
 
   delete: async (id: string) => {
-    const response = await fetch(`${API_BASE}/tarefas/${id}`, {
+    const response = await fetch(`${API_BASE}/tasks/${id}`, {
       method: 'DELETE',
       headers: getHeaders(),
     });
@@ -175,7 +175,7 @@ export const apiTasks = {
   },
 
   updateStatus: async (id: string, status: string) => {
-    const response = await fetch(`${API_BASE}/tarefas/${id}/status`, {
+    const response = await fetch(`${API_BASE}/tasks/${id}/status`, {
       method: 'PATCH',
       headers: getHeaders(),
       body: JSON.stringify({ status }),
@@ -187,7 +187,7 @@ export const apiTasks = {
 // ============ UTILIZADORES ============
 export const apiUsers = {
   getAll: async () => {
-    const response = await fetch(`${API_BASE}/admin/usuarios`, {
+    const response = await fetch(`${API_BASE}/admin/users`, {
       method: 'GET',
       headers: getHeaders(),
     });
@@ -203,7 +203,7 @@ export const apiUsers = {
   },
 
   create: async (userData: any) => {
-    const response = await fetch(`${API_BASE}/admin/usuarios`, {
+    const response = await fetch(`${API_BASE}/admin/users`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(userData),
