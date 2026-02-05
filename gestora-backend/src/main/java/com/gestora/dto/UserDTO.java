@@ -16,6 +16,7 @@ public class UserDTO {
     private String name;
     private String avatar;
     private String role;
+    private boolean mustChangePassword;
 
     public static UserDTO of(User user) {
         return UserDTO.builder()
@@ -24,6 +25,7 @@ public class UserDTO {
             .name(user.getName())
             .avatar(user.getAvatar())
             .role(user.getRole().name())
+            .mustChangePassword(user.isMustChangePassword())
             .build();
     }
 }

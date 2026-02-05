@@ -39,6 +39,9 @@ public class User {
     @Enumerated(EnumType.STRING)
     private UserRole role = UserRole.EMPLOYEE;
 
+    @Column(nullable = false)
+    private boolean mustChangePassword = false;
+
     @Column(length = 120)
     private String inviteToken;
 

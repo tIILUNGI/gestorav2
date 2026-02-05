@@ -45,4 +45,30 @@ public class EmailService {
             return false;
         }
     }
+
+    public boolean sendTempCredentialsEmail(String to, String tempPassword) {
+        if (fromAddress.isEmpty()) {
+            logger.warn("Email não configurado. Credenciais temporárias para {}: {}", to, tempPassword);
+            return false;
+        }
+
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(fromAddress);
+            message.setTo(to);
+            message.setSubject("Credenciais temporárias - GESTORA");
+            message.setText("Olá,\n\nVocê foi cadastrado no sistema GESTORA.\n" +
+                "Credenciais temporárias:\n" +
+                "Email: " + to + "\n" +
+                "Senha: " + tempPassword + "\n\n" +
+                "Após o login, será solicitado que você altere a senha.\n");
+
+            mailSender.send(message);
+            return true;
+        } catch (Exception e) {
+            logger.warn("Falha ao enviar credenciais para {}: {}", to, e.getMessage());
+            logger.warn("Senha temporária: {}", tempPassword);
+            return false;
+        }
+    }
 }

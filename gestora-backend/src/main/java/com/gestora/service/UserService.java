@@ -64,25 +64,26 @@ public class UserService {
 
         User.UserRole role = request.getRole() != null ? request.getRole() : User.UserRole.EMPLOYEE;
 
+        String tempPassword = request.getTempPassword();
+        if (tempPassword == null || tempPassword.trim().length() < 6) {
+            throw new RuntimeException("Senha temporária deve ter pelo menos 6 caracteres");
+        }
+
         User user = new User();
         user.setEmail(email);
         user.setName(name);
         user.setRole(role);
-        user.setPassword(passwordEncoder.encode(generateTempPassword()));
-
-        String token = generateInviteToken();
-        user.setInviteToken(token);
-        user.setInviteTokenExpiry(LocalDateTime.now().plusHours(inviteExpiryHours));
+        user.setPassword(passwordEncoder.encode(tempPassword.trim()));
+        user.setMustChangePassword(true);
 
         User saved = userRepository.save(user);
 
-        String inviteLink = buildInviteLink(token);
-        boolean emailSent = emailService.sendInviteEmail(email, inviteLink);
+        boolean emailSent = emailService.sendTempCredentialsEmail(email, tempPassword.trim());
 
         return InviteResponse.builder()
             .user(com.gestora.dto.UserDTO.of(saved))
             .emailSent(emailSent)
-            .inviteLink(inviteLink)
+            .inviteLink("")
             .build();
     }
 
@@ -106,6 +107,17 @@ public class UserService {
         user.setInviteTokenExpiry(null);
 
         return userRepository.save(user);
+    }
+
+    public void changePasswordByEmail(String email, String newPassword) {
+        if (newPassword == null || newPassword.trim().length() < 6) {
+            throw new RuntimeException("Senha deve ter pelo menos 6 caracteres");
+        }
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+        user.setPassword(passwordEncoder.encode(newPassword.trim()));
+        user.setMustChangePassword(false);
+        userRepository.save(user);
     }
 
     public Optional<User> findByEmail(String email) {

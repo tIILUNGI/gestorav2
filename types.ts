@@ -29,6 +29,8 @@ export interface User {
   avatar?: string;
   position?: string;
   department?: string;
+  mustChangePassword?: boolean;
+  localPassword?: string;
 }
 
 export interface Task {

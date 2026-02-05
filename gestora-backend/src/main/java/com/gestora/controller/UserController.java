@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/users")
@@ -40,6 +41,25 @@ public class UserController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PatchMapping("/{id}/senha")
+    public ResponseEntity<?> changePassword(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        try {
+            String newPassword = body.get("password");
+            User user = userService.findById(id)
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+            String requester = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+            boolean isAdmin = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication()
+                .getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+            if (!isAdmin && !user.getEmail().equalsIgnoreCase(requester)) {
+                return ResponseEntity.status(403).body("Sem permissão para alterar esta senha");
+            }
+            userService.changePasswordByEmail(user.getEmail(), newPassword);
+            return ResponseEntity.ok().body("Senha atualizada com sucesso");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Erro ao atualizar senha: " + e.getMessage());
         }
     }
 

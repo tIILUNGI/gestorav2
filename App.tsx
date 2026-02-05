@@ -69,7 +69,7 @@ const Button = ({ children, onClick, variant = 'primary', className = '', type =
 };
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'login' | 'app' | 'set-password'>('login');
+  const [view, setView] = useState<'landing' | 'login' | 'app' | 'set-password' | 'force-password'>('login');
   const [user, setUser] = useState<User | null>(null);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -78,9 +78,14 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>('light');
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [profilePassword, setProfilePassword] = useState('');
+  const [profilePasswordConfirm, setProfilePasswordConfirm] = useState('');
+  const [profilePasswordError, setProfilePasswordError] = useState<string | null>(null);
+  const [profilePasswordSuccess, setProfilePasswordSuccess] = useState<string | null>(null);
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isNotificationsOpen, setNotificationsOpen] = useState(false);
   
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -95,6 +100,24 @@ export default function App() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const t = TRANSLATIONS[lang];
+  const setActiveTabSafe = (tab: string) => {
+    if (user?.mustChangePassword && tab !== 'profile') {
+      setActiveTab('profile');
+      return;
+    }
+    setActiveTab(tab);
+  };
+  const visibleActivities = useMemo(() => {
+    if (!user) return [];
+    if (user.role === UserRole.ADMIN) return systemActivities;
+    const myTaskIds = new Set(
+      tasks
+        .filter(t => t.responsibleId === user.id || t.intervenientes?.includes(user.id))
+        .map(t => t.id)
+    );
+    return systemActivities.filter(a => myTaskIds.has(a.entityId));
+  }, [systemActivities, tasks, user]);
+  const lastNotificationRef = useRef<Map<string, number>>(new Map());
   const getAuthErrorMessage = (err: any) => {
     const msg = (err?.message || '').toLowerCase();
     if (
@@ -113,10 +136,22 @@ export default function App() {
   useEffect(() => {
     const savedTasks = JSON.parse(localStorage.getItem('gestora_tasks') || JSON.stringify(INITIAL_TASKS));
     const savedUsers = JSON.parse(localStorage.getItem('gestora_users') || JSON.stringify(MOCK_USERS));
-    const savedActivities = JSON.parse(localStorage.getItem('gestora_activities') || '[]');
-    setTasks(savedTasks);
+    const savedActivitiesRaw = JSON.parse(localStorage.getItem('gestora_activities') || '[]');
+    const dedupeActivities = (list: SystemActivity[]) => {
+      const seen = new Set<string>();
+      return list.filter(a => {
+        const key = `${a.userId}|${a.action}|${a.entityId}|${a.fromStatus || ''}|${a.toStatus || ''}|${a.timestamp || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    const savedActivities = dedupeActivities(savedActivitiesRaw);
+    const localOnlyTasks = savedTasks.filter((t: any) => typeof t.id === 'string' && t.id.toUpperCase().startsWith('T-'));
+    setTasks(localOnlyTasks);
     setUsers(savedUsers);
     setSystemActivities(savedActivities);
+    localStorage.setItem('gestora_activities', JSON.stringify(savedActivities));
     
     // Restaurar token de autenticação
     const savedToken = sessionStorage.getItem('gestora_api_token');
@@ -138,6 +173,12 @@ export default function App() {
       (async () => {
         try {
           const apiUser = await apiAuth.getCurrentUser();
+          if (!apiUser) {
+            setAuthToken(null);
+            setUser(null);
+            setView('login');
+            return;
+          }
           const normalizedUser = {
             ...apiUser,
             id: apiUser?.id ?? apiUser?.userId,
@@ -147,8 +188,13 @@ export default function App() {
           };
           const mapped = mapUserFromAPI(normalizedUser);
           setUser(mapped);
-          setView('app');
-          await loadDataFromAPI();
+          if (mapped.mustChangePassword) {
+            setView('app');
+            setActiveTab('profile');
+          } else {
+            setView('app');
+          await loadDataFromAPI(mapped);
+          }
         } catch (error) {
           setAuthToken(null);
           setUser(null);
@@ -163,7 +209,20 @@ export default function App() {
     setView('login');
   }, []);
 
-  const loadDataFromAPI = async () => {
+  const mergeTasks = (apiTasksList: Task[]) => {
+    const localOnly = tasks.filter(t => isLocalTaskId(t.id));
+    const byId = new Map<string, Task>();
+    apiTasksList.forEach(t => byId.set(String(t.id), t));
+    localOnly.forEach(t => { if (!byId.has(t.id)) byId.set(t.id, t); });
+    return Array.from(byId.values());
+  };
+
+  const filterTasksForUser = (list: Task[], u?: User | null) => {
+    if (!u || u.role !== UserRole.EMPLOYEE) return list;
+    return list.filter(t => t.responsibleId === u.id || t.intervenientes?.includes(u.id));
+  };
+
+  const loadDataFromAPI = async (currentUser?: User | null) => {
     try {
       // Carregar tarefas da API
       const tasksResponse = await apiTasks.getAll();
@@ -171,7 +230,8 @@ export default function App() {
         const tasksList = Array.isArray(tasksResponse) ? tasksResponse : (tasksResponse.data || tasksResponse.tasks || []);
         const mappedTasks = tasksList.map((t: any) => mapTaskFromAPI(t));
         if (mappedTasks.length > 0) {
-          saveTasks(mappedTasks);
+          const merged = mergeTasks(mappedTasks);
+          saveTasks(filterTasksForUser(merged, currentUser ?? user));
           logger.debug('API', 'Tarefas carregadas da API com sucesso', mappedTasks.length);
         }
       }
@@ -179,8 +239,12 @@ export default function App() {
       logger.debug('API', 'Não foi possível carregar tarefas da API, usando dados locais', error);
     }
 
+    if ((currentUser ?? user)?.role !== UserRole.ADMIN) {
+      return;
+    }
+
     try {
-      // Carregar utilizadores da API
+      // Carregar utilizadores da API (somente admin)
       const usersResponse = await apiUsers.getAll();
       if (usersResponse) {
         const usersList = Array.isArray(usersResponse) ? usersResponse : (usersResponse.data || usersResponse.users || []);
@@ -279,8 +343,10 @@ export default function App() {
   const handleAdvanceStatus = async (task: Task) => {
     const currentIndex = StatusOrder.indexOf(task.status);
     const nextStatus = StatusOrder[currentIndex + 1];
-    if (task.status === TaskStatus.TERMINADO && user?.role !== UserRole.ADMIN) return;
     if (!nextStatus) return;
+    const isTaskMember = task.responsibleId === user?.id || task.intervenientes?.includes(user?.id as string);
+    if (user?.role === UserRole.EMPLOYEE && !isTaskMember) return;
+    if (task.status === TaskStatus.TERMINADO && user?.role !== UserRole.ADMIN) return;
 
     const updatedTasks = tasks.map(tk => tk.id === task.id ? { 
       ...tk, 
@@ -319,6 +385,11 @@ export default function App() {
   };
 
   const addNotification = async (userId: string, message: string, type: 'info' | 'success' | 'error' = 'info') => {
+    const now = Date.now();
+    const key = `${userId}|${type}|${message}`;
+    const lastAt = lastNotificationRef.current.get(key) || 0;
+    if (now - lastAt < 5000) return;
+    lastNotificationRef.current.set(key, now);
     const n: Notification = {
       id: Math.random().toString(36).substr(2, 9),
       userId,
@@ -327,15 +398,33 @@ export default function App() {
       timestamp: new Date().toISOString(),
       isRead: false
     };
-    setNotifications(prev => [n, ...prev]);
+    setNotifications(prev => {
+      const exists = prev.some(p => p.userId === userId && p.message === message && p.type === type && Math.abs(new Date(p.timestamp).getTime() - now) < 10000);
+      if (exists) return prev;
+      return [n, ...prev];
+    });
   };
 
   const addSystemActivity = (a: Omit<SystemActivity, 'id' | 'timestamp'>) => {
     const full: SystemActivity = { ...a, id: 'A-' + Math.random().toString(36).substr(2, 9), timestamp: new Date().toISOString() };
     setSystemActivities(prev => {
+      const exists = prev.some(p => p.userId === full.userId && p.action === full.action && p.entityId === full.entityId && p.fromStatus === full.fromStatus && p.toStatus === full.toStatus);
+      if (exists) return prev;
       const next = [full, ...prev].slice(0, 200);
       localStorage.setItem('gestora_activities', JSON.stringify(next));
       return next;
+    });
+
+    const message = (() => {
+      if (a.action === 'created') return `Criou tarefa: ${a.entityTitle || a.entityId}`;
+      if (a.action === 'updated') return `Atualizou tarefa: ${a.entityTitle || a.entityId}`;
+      if (a.action === 'deleted') return `Eliminou tarefa: ${a.entityTitle || a.entityId}`;
+      if (a.action === 'status_changed') return `Mudou estado: ${a.entityTitle || a.entityId} (${a.fromStatus} → ${a.toStatus})`;
+      if (a.action === 'commented') return `Comentou na tarefa: ${a.entityTitle || a.entityId}`;
+      return `Atividade: ${a.entityTitle || a.entityId}`;
+    })();
+    users.filter(u => u.role === UserRole.ADMIN).forEach(u => {
+      addNotification(u.id, message, 'info');
     });
   };
 
@@ -439,13 +528,33 @@ const LoginPage = () => {
       };
       const mappedUser = mapUserFromAPI(normalizedUser);
       setUser(mappedUser);
-      setView('app');
-      await loadDataFromAPI();
+      if (mappedUser.mustChangePassword) {
+        setView('app');
+        setActiveTab('profile');
+      } else {
+        setView('app');
+        await loadDataFromAPI(mappedUser);
+      }
     } catch (apiError: any) {
-      logger.warn('Auth', 'API login falhou', apiError);
-      setAuthToken(null);
-      setUser(null);
-      setErrorMessage(getAuthErrorMessage(apiError));
+      logger.warn('Auth', 'API login falhou, tentando login local...', apiError);
+      // Fallback local
+      const foundUser = users.find(u => u.email.toLowerCase() === formData.email.toLowerCase());
+      if (foundUser && foundUser.localPassword === formData.password) {
+        const token = Math.random().toString(36).substr(2, 12);
+        setAuthToken(token);
+        setUser(foundUser);
+        const mustChange = foundUser.mustChangePassword ?? !!foundUser.localPassword;
+        if (mustChange) {
+          setView('app');
+          setActiveTab('profile');
+        } else {
+          setView('app');
+        }
+      } else {
+        setAuthToken(null);
+        setUser(null);
+        setErrorMessage(getAuthErrorMessage(apiError));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -810,15 +919,15 @@ const LoginPage = () => {
         </div>
 
         <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto">
-          <SidebarNavItem icon={<LayoutDashboard size={20}/>} label={t.dashboard} active={activeTab === 'dashboard'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTab('dashboard'); setAppSidebarOpen(false); }} />
-          <SidebarNavItem icon={<CheckSquare size={20}/>} label={t.tasks} active={activeTab === 'tasks'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTab('tasks'); setAppSidebarOpen(false); }} />
+          <SidebarNavItem icon={<LayoutDashboard size={20}/>} label={t.dashboard} active={activeTab === 'dashboard'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTabSafe('dashboard'); setAppSidebarOpen(false); }} />
+          <SidebarNavItem icon={<CheckSquare size={20}/>} label={t.tasks} active={activeTab === 'tasks'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTabSafe('tasks'); setAppSidebarOpen(false); }} />
           {user?.role === UserRole.ADMIN && (
             <>
-              <SidebarNavItem icon={<Users size={20}/>} label={t.users} active={activeTab === 'users'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTab('users'); setAppSidebarOpen(false); }} />
-              <SidebarNavItem icon={<BarChart2 size={20}/>} label={t.reports} active={activeTab === 'reports'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTab('reports'); setAppSidebarOpen(false); }} />
+              <SidebarNavItem icon={<Users size={20}/>} label={t.users} active={activeTab === 'users'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTabSafe('users'); setAppSidebarOpen(false); }} />
+              <SidebarNavItem icon={<BarChart2 size={20}/>} label={t.reports} active={activeTab === 'reports'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTabSafe('reports'); setAppSidebarOpen(false); }} />
             </>
           )}
-          <SidebarNavItem icon={<UserIcon size={20}/>} label={t.profile} active={activeTab === 'profile'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTab('profile'); setAppSidebarOpen(false); }} />
+          <SidebarNavItem icon={<UserIcon size={20}/>} label={t.profile} active={activeTab === 'profile'} collapsed={isSidebarCollapsed} onClick={() => { setActiveTabSafe('profile'); setAppSidebarOpen(false); }} />
         </nav>
 
         <div className="p-4 lg:p-6 border-t border-slate-100 dark:border-slate-800">
@@ -845,6 +954,44 @@ const LoginPage = () => {
            <div className="flex items-center gap-6">
               <button onClick={() => setLang(lang === 'pt' ? 'en' : 'pt')} className="text-[10px] font-black p-2 bg-slate-50 dark:bg-slate-800 rounded-lg uppercase tracking-widest">{lang}</button>
               <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} className="p-3 text-slate-400">{theme === 'light' ? <Moon size={20}/> : <Sun size={20}/>}</button>
+              <div className="relative">
+                <button
+                  onClick={() => setNotificationsOpen(!isNotificationsOpen)}
+                  className="p-3 text-slate-400 relative"
+                  aria-label="Notificações"
+                >
+                  <Bell size={20} />
+                  {notifications.filter(n => n.userId === user?.id && !n.isRead).length > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 bg-rose-500 text-white text-[9px] font-bold rounded-full h-4 min-w-[16px] px-1 flex items-center justify-center">
+                      {notifications.filter(n => n.userId === user?.id && !n.isRead).length}
+                    </span>
+                  )}
+                </button>
+                {isNotificationsOpen && (
+                  <div className="absolute right-0 mt-2 w-80 max-h-[380px] overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-[120]">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-500">Notificações</p>
+                      <button
+                        onClick={() => setNotifications(prev => prev.map(n => n.userId === user?.id ? { ...n, isRead: true } : n))}
+                        className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700"
+                      >
+                        Marcar todas
+                      </button>
+                    </div>
+                    <div className="p-2 space-y-2">
+                      {notifications.filter(n => n.userId === user?.id).length === 0 && (
+                        <div className="p-4 text-xs text-slate-400 text-center">Sem notificações</div>
+                      )}
+                      {notifications.filter(n => n.userId === user?.id).map(n => (
+                        <div key={n.id} className={`px-3 py-2 rounded-xl text-xs ${n.isRead ? 'bg-slate-50 dark:bg-slate-800 text-slate-500' : 'bg-emerald-50 dark:bg-emerald-900/20 text-slate-700'}`}>
+                          <p className="font-semibold">{n.message}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">{new Date(n.timestamp).toLocaleString('pt-PT')}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-3 sm:gap-4 pl-4 sm:pl-6 border-l border-slate-100 dark:border-slate-800">
                  <div className="text-right hidden sm:block">
                     <p className="text-sm font-black text-slate-900 dark:text-white leading-none">{user!.name}</p>
@@ -882,7 +1029,7 @@ const LoginPage = () => {
               <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-[3rem] p-6 sm:p-8 lg:p-12 border border-slate-100 dark:border-slate-800 shadow-sm">
                 <h3 className="text-base sm:text-lg font-black mb-6 sm:mb-10 tracking-tight">{t.latestUpdates}</h3>
                 <div className="space-y-4 sm:space-y-6 max-h-[420px] overflow-y-auto pr-2">
-                  {systemActivities.slice(0, 15).map(a => (
+                  {visibleActivities.slice(0, 15).map(a => (
                     <div key={a.id} className="flex gap-3 sm:gap-6 items-start border-b border-slate-50 dark:border-slate-800 pb-4 last:border-0">
                       <div className="p-2.5 sm:p-4 rounded-xl shrink-0 bg-emerald-50 dark:bg-emerald-900/20 text-[#10b981]"><Bell size={18} className="sm:w-5 sm:h-5"/></div>
                       <div className="flex-1 min-w-0">
@@ -891,12 +1038,42 @@ const LoginPage = () => {
                           {a.action === 'updated' && <><span className="text-[#10b981]">{a.userName}</span> editou a tarefa «{a.entityTitle}»</>}
                           {a.action === 'deleted' && <><span className="text-rose-600">{a.userName}</span> eliminou a tarefa «{a.entityTitle}»</>}
                           {a.action === 'status_changed' && <><span className="text-[#10b981]">{a.userName}</span> alterou «{a.entityTitle}» de {a.fromStatus} → {a.toStatus}</>}
+                          {a.action === 'commented' && <><span className="text-[#10b981]">{a.userName}</span> comentou em «{a.entityTitle}»</>}
                         </p>
                         <p className="text-[10px] font-black uppercase text-slate-400 mt-1">{new Date(a.timestamp).toLocaleString()}</p>
                       </div>
                     </div>
                   ))}
-                  {systemActivities.length === 0 && <p className="text-slate-400 font-bold uppercase tracking-widest text-center py-10">Nenhuma actividade registada.</p>}
+                  {visibleActivities.length === 0 && (
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-center py-10">Nenhuma actividade registada.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Log detalhado separado das notificações */}
+              <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-[3rem] p-6 sm:p-8 lg:p-12 border border-slate-100 dark:border-slate-800 shadow-sm">
+                <h3 className="text-base sm:text-lg font-black mb-6 sm:mb-10 tracking-tight">Log de Actividades</h3>
+                <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
+                  {visibleActivities.map(a => (
+                    <div key={`log-${a.id}`} className="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 text-xs">
+                      <span className="font-bold text-slate-700 dark:text-slate-300">{new Date(a.timestamp).toLocaleString('pt-PT')}</span>
+                      <span className="mx-2 text-slate-400">•</span>
+                      <span className="text-slate-600 dark:text-slate-300">{a.userName}</span>
+                      <span className="mx-2 text-slate-400">•</span>
+                      <span className="text-slate-500">{a.action}</span>
+                      <span className="mx-2 text-slate-400">•</span>
+                      <span className="text-slate-700 dark:text-slate-200">{a.entityTitle || a.entityId}</span>
+                      {a.fromStatus && a.toStatus && (
+                        <>
+                          <span className="mx-2 text-slate-400">•</span>
+                          <span className="text-slate-500">{a.fromStatus} → {a.toStatus}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  {visibleActivities.length === 0 && (
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-center py-10">Nenhuma actividade registada.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -982,6 +1159,11 @@ const LoginPage = () => {
             <div className="max-w-2xl mx-auto space-y-8 animate-in">
               <h3 className="text-lg font-black">{t.myProfile}</h3>
               <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-100 dark:border-slate-800 shadow-sm">
+                {user?.mustChangePassword && (
+                  <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                    Por segurança, altere sua senha para continuar.
+                  </div>
+                )}
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.target as HTMLFormElement);
@@ -1012,6 +1194,68 @@ const LoginPage = () => {
                     </div>
                   </div>
                   <div className="flex gap-3"><Button type="submit" className="flex-1">{t.save}</Button><Button type="button" variant="ghost" onClick={() => setActiveTab('dashboard')}>{t.cancel}</Button></div>
+                </form>
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 border border-slate-100 dark:border-slate-800 shadow-sm">
+                <h4 className="text-base font-black mb-4">Alterar Senha</h4>
+                {profilePasswordError && (
+                  <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">
+                    {profilePasswordError}
+                  </div>
+                )}
+                {profilePasswordSuccess && (
+                  <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">
+                    {profilePasswordSuccess}
+                  </div>
+                )}
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  setProfilePasswordError(null);
+                  setProfilePasswordSuccess(null);
+                  if (!profilePassword.trim()) {
+                    setProfilePasswordError('Preencha a nova senha.');
+                    return;
+                  }
+                  if (profilePassword.trim().length < 6) {
+                    setProfilePasswordError('A senha deve ter pelo menos 6 caracteres.');
+                    return;
+                  }
+                  if (profilePassword !== profilePasswordConfirm) {
+                    setProfilePasswordError('As senhas não coincidem.');
+                    return;
+                  }
+                  try {
+                    await apiUsers.changePassword(user!.id, profilePassword);
+                    const updatedUser = { ...user!, mustChangePassword: false, localPassword: profilePassword };
+                    setUser(updatedUser);
+                    saveUsers(users.map(u => u.id === user!.id ? updatedUser : u));
+                    setProfilePassword('');
+                    setProfilePasswordConfirm('');
+                    setProfilePasswordSuccess('Senha atualizada com sucesso.');
+                    setActiveTabSafe('dashboard');
+                  } catch (error) {
+                    const updatedUser = { ...user!, mustChangePassword: false, localPassword: profilePassword };
+                    saveUsers(users.map(u => u.id === user!.id ? updatedUser : u));
+                    setUser(updatedUser);
+                    setProfilePassword('');
+                    setProfilePasswordConfirm('');
+                    setProfilePasswordSuccess('Senha atualizada localmente com sucesso.');
+                    setActiveTabSafe('dashboard');
+                  }
+                }}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Nova senha</label>
+                      <input value={profilePassword} onChange={(e) => setProfilePassword(e.target.value)} type="password" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Confirmar senha</label>
+                      <input value={profilePasswordConfirm} onChange={(e) => setProfilePasswordConfirm(e.target.value)} type="password" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" />
+                    </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                    <Button type="submit" className="flex-1">Atualizar senha</Button>
+                  </div>
                 </form>
               </div>
             </div>
@@ -1205,7 +1449,8 @@ const LoginPage = () => {
               e.preventDefault();
               setUserFormError(null);
               const fd = new FormData(e.target as HTMLFormElement);
-              const newUser: User = { id: 'u-' + Math.random().toString(36).substr(2, 9), name: fd.get('name') as string, email: fd.get('email') as string, role: (fd.get('role') as UserRole) || UserRole.EMPLOYEE, position: (fd.get('position') as string) || '' };
+              const tempPassword = (fd.get('tempPassword') as string) || '';
+              const newUser: User = { id: 'u-' + Math.random().toString(36).substr(2, 9), name: fd.get('name') as string, email: fd.get('email') as string, role: (fd.get('role') as UserRole) || UserRole.EMPLOYEE, position: (fd.get('position') as string) || '', mustChangePassword: true, localPassword: tempPassword };
               let createdUser = newUser;
 
               try {
@@ -1213,7 +1458,8 @@ const LoginPage = () => {
                   name: newUser.name,
                   email: newUser.email,
                   role: newUser.role,
-                  position: newUser.position
+                  position: newUser.position,
+                  tempPassword
                 });
 
                 if (apiResponse?.user) {
@@ -1231,12 +1477,19 @@ const LoginPage = () => {
               }
               
               saveUsers([...users, createdUser]);
+              if (createdUser.localPassword) {
+                addNotification(user!.id, `Credenciais temporárias de ${createdUser.email}: ${createdUser.localPassword}`, 'info');
+              }
+              users.filter(u => u.role === UserRole.ADMIN).forEach(u => {
+                addNotification(u.id, `Novo utilizador criado: ${createdUser.name} (${createdUser.email})`, 'info');
+              });
               setIsAddUserOpen(false);
             }}>
               <div className="space-y-4">
                 <div><label className="text-[10px] font-black uppercase text-slate-400 block mb-1">{t.name}</label><input name="name" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" required /></div>
                 <div><label className="text-[10px] font-black uppercase text-slate-400 block mb-1">{t.email}</label><input name="email" type="email" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" required /></div>
                 <div><label className="text-[10px] font-black uppercase text-slate-400 block mb-1">{t.position}</label><input name="position" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
+                <div><label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Senha temporária</label><input name="tempPassword" type="password" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" required /></div>
                 <div><label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Função</label><select name="role" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold"><option value={UserRole.EMPLOYEE}>Funcionário</option><option value={UserRole.ADMIN}>Administrador</option></select></div>
                 <p className="text-[10px] text-slate-400">Será enviado um link por email para definir a palavra-passe.</p>
               </div>
@@ -1276,6 +1529,12 @@ const LoginPage = () => {
                 }
                 
                 saveUsers(updated);
+                users.filter(u => u.role === UserRole.ADMIN).forEach(u => {
+                  const updatedUser = updated.find(x => x.id === editingUserId);
+                  if (updatedUser) {
+                    addNotification(u.id, `Utilizador atualizado: ${updatedUser.name} (${updatedUser.email})`, 'info');
+                  }
+                });
                 setEditingUserId(null);
               }}>
                 <div className="space-y-4">

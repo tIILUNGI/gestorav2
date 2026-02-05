@@ -14,4 +14,5 @@ public class InviteUserRequest {
     private String email;
     private String name;
     private User.UserRole role;
+    private String tempPassword;
 }

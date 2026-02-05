@@ -86,4 +86,16 @@ public class AuthController {
             return ResponseEntity.badRequest().body(Map.of("message", "Erro ao definir senha: " + e.getMessage()));
         }
     }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<?> changePassword(@RequestBody Map<String, String> body) {
+        try {
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            String newPassword = body.get("password");
+            userService.changePasswordByEmail(email, newPassword);
+            return ResponseEntity.ok(Map.of("success", true, "message", "Senha alterada com sucesso"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Erro ao alterar senha: " + e.getMessage()));
+        }
+    }
 }
