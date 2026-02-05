@@ -337,6 +337,28 @@ export default function App() {
     saveTasks(tasks.filter(t => t.id !== task.id));
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    if (!window.confirm('Tem certeza que deseja eliminar este utilizador? Esta ação não pode ser desfeita.')) {
+      return;
+    }
+    
+    const userToDelete = users.find(u => u.id === userId);
+    if (!userToDelete) return;
+    
+    try {
+      // Tentar deletar na API
+      await apiAdminUsers.delete(userId);
+      logger.debug('User', 'Utilizador eliminado na API', userId);
+      addNotification(user!.id, `Utilizador ${userToDelete.name} eliminado com sucesso.`, 'success');
+    } catch (apiError) {
+      logger.warn('User', 'Erro ao eliminar na API, eliminando localmente...', apiError);
+      addNotification(user!.id, `Não foi possível eliminar ${userToDelete.name} na API. Removido localmente.`, 'error');
+    }
+    
+    // Sempre remove localmente também
+    saveUsers(users.filter(u => u.id !== userId));
+  };
+
   const recalcDelivery = (form: HTMLFormElement) => {
     const start = (form?.elements.namedItem('startDate') as HTMLInputElement)?.value;
     const val = (form?.elements.namedItem('deadlineValue') as HTMLInputElement)?.value;
@@ -1469,7 +1491,7 @@ const LoginPage = () => {
                     </div>
                     <div className="flex flex-col gap-2">
                       <button onClick={() => { setUserFormError(null); setEditingUserId(u.id); }} className="p-2 rounded-lg text-slate-400 hover:bg-emerald-50 hover:text-[#10b981]"><Pencil size={16}/></button>
-                      <button onClick={() => { if (confirm(t.areYouSure)) saveUsers(users.filter(x => x.id !== u.id)); }} className="p-2 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500"><Trash2 size={16}/></button>
+                      <button onClick={() => handleDeleteUser(u.id)} className="p-2 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500"><Trash2 size={16}/></button>
                     </div>
                   </div>
                 ))}
