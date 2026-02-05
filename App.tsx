@@ -13,7 +13,7 @@ import {
 } from './types';
 import { MOCK_USERS, TRANSLATIONS, STATUS_COLORS, INITIAL_TASKS } from './constants';
 import { getSmartNotification } from './services/geminiService';
-import { setAuthToken, getAuthToken, apiAuth, apiTasks, apiUsers, apiComments, mapTaskFromAPI, mapUserFromAPI, mapCommentFromAPI } from './services/apiService';
+import { setAuthToken, apiAuth, apiTasks, apiUsers, apiComments, mapTaskFromAPI, mapUserFromAPI, mapCommentFromAPI } from './services/apiService';
 import { logger } from './services/logger';
 import { 
   LayoutDashboard, 
@@ -69,8 +69,9 @@ const Button = ({ children, onClick, variant = 'primary', className = '', type =
 };
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'login' | 'app'>('landing');
+  const [view, setView] = useState<'landing' | 'login' | 'app' | 'set-password'>('login');
   const [user, setUser] = useState<User | null>(null);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [lang, setLang] = useState<Language>('pt');
@@ -101,26 +102,25 @@ export default function App() {
     setUsers(savedUsers);
     setSystemActivities(savedActivities);
     
-    // Restaurar token de autenticação
+    // Restaurar token de autenticação (sem auto-login)
     const savedToken = localStorage.getItem('gestora_api_token');
     if (savedToken) {
       setAuthToken(savedToken);
+    } else {
+      setAuthToken(null);
     }
-    
-    try {
-      const auth = JSON.parse(localStorage.getItem('gestora_auth') || 'null');
-      if (auth && auth.userId) {
-        const found = savedUsers.find((u: any) => u.id === auth.userId);
-        if (found) { setUser(found); setView('app'); }
-      }
-    } catch (e) {
-      // ignore
+
+    const invite = new URLSearchParams(window.location.search).get('invite');
+    if (invite) {
+      setInviteToken(invite);
+      setUser(null);
+      setView('set-password');
+      return;
     }
-    
-    // Tentar sincronizar com a API se token disponível
-    if (savedToken) {
-      loadDataFromAPI();
-    }
+
+    // Forçar tela de login ao abrir o sistema
+    setUser(null);
+    setView('login');
   }, []);
 
   const loadDataFromAPI = async () => {
@@ -369,58 +369,31 @@ const LoginPage = () => {
     setIsLoading(true);
     
     try {
-      // Tentar login com a API primeiro
+      // Tentar login com a API
       const apiResponse = await apiAuth.login(formData.email, formData.password);
-      
-      if (apiResponse.token) {
-        setAuthToken(apiResponse.token);
-        setUser(apiResponse.user || { 
-          id: apiResponse.userId, 
-          email: formData.email, 
-          name: apiResponse.name || 'Utilizador', 
-          role: UserRole.EMPLOYEE 
-        });
-        setView('app');
-        return;
-      }
-    } catch (apiError: any) {
-      logger.warn('Auth', 'API login falhou, tentando fallback local...', apiError);
-      
-      // Fallback para login local se API falhar
-      const foundUser = users.find(u => 
-        u.email.toLowerCase() === formData.email.toLowerCase()
-      );
+      const token = apiResponse.token || apiResponse.jwt;
 
-      if (foundUser) {
-        // Determinar senha correta baseada no papel do usuário
-        const correctPassword = foundUser.role === UserRole.ADMIN ? 'admin123' : '123456';
-        
-        if (formData.password === correctPassword) {
-          const token = Math.random().toString(36).substr(2, 12);
-          setAuthToken(token);
-          localStorage.setItem('gestora_auth', JSON.stringify({ 
-            token, 
-            userId: foundUser.id,
-            userRole: foundUser.role
-          }));
-          
-          const updatedUsers = users.map(u => 
-            u.id === foundUser.id ? { ...u, lastLogin: new Date().toISOString() } : u
-          );
-          saveUsers(updatedUsers);
-          setUser({ ...foundUser, lastLogin: new Date().toISOString() });
-          setView('app');
-        } else {
-          // Mensagem de erro específica baseada no papel do usuário
-          if (foundUser.role === UserRole.ADMIN) {
-            setErrorMessage('Senha incorreta para administrador.');
-          } else {
-            setErrorMessage('Senha incorreta para funcionário.');
-          }
-        }
-      } else {
-        setErrorMessage('Email não encontrado. Verifique suas credenciais.');
+      if (!token) {
+        throw new Error('Resposta de login sem token.');
       }
+
+      setAuthToken(token);
+      const apiUser = apiResponse.user || apiResponse;
+      const normalizedUser = {
+        ...apiUser,
+        id: apiUser?.id ?? apiUser?.userId,
+        email: apiUser?.email ?? formData.email,
+        name: apiUser?.name ?? apiUser?.username,
+        role: apiUser?.role ?? UserRole.EMPLOYEE
+      };
+      setUser(mapUserFromAPI(normalizedUser));
+      setView('app');
+      await loadDataFromAPI();
+    } catch (apiError: any) {
+      logger.warn('Auth', 'API login falhou', apiError);
+      setAuthToken(null);
+      setUser(null);
+      setErrorMessage(apiError?.message || 'Falha na autenticação com a API.');
     } finally {
       setIsLoading(false);
     }
@@ -442,14 +415,14 @@ const LoginPage = () => {
         <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-lg border border-slate-200">
           <h2 className="text-lg sm:text-xl font-bold text-slate-900 mb-2">Acesso ao Sistema</h2>
           <p className="text-slate-500 text-xs sm:text-sm mb-6 sm:mb-8">
-            Entre com suas credenciais corporativas
+            Entre com suas credenciais corporativas</p>
             <div className="text-[10px] text-slate-600 mt-2 space-y-1">
               <div className="flex items-center gap-1">
                 <ShieldCheck size={12} className="text-emerald-600" />
                  <UserIcon size={12} className="text-blue-600" />
               </div>
             </div>
-          </p>
+          
 
           {/* Mensagem de erro */}
           {errorMessage && (
@@ -573,6 +546,139 @@ const LoginPage = () => {
   );
 };
 
+  const SetPasswordPage = () => {
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setErrorMessage(null);
+      setSuccessMessage(null);
+
+      if (!inviteToken) {
+        setErrorMessage('Link inválido ou expirado.');
+        return;
+      }
+
+      if (!password.trim()) {
+        setErrorMessage('Por favor, preencha a senha.');
+        return;
+      }
+
+      if (password.trim().length < 6) {
+        setErrorMessage('A senha deve ter pelo menos 6 caracteres.');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setErrorMessage('As senhas não coincidem.');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        await apiAuth.setPassword(inviteToken, password);
+        setSuccessMessage('Senha definida com sucesso. Pode entrar no sistema.');
+        setInviteToken(null);
+        if (typeof window !== 'undefined') {
+          const cleanUrl = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, document.title, cleanUrl);
+        }
+      } catch (error: any) {
+        setErrorMessage(error?.message || 'Falha ao definir a senha.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 sm:p-6 font-sans">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8 sm:mb-10">
+            <div className="inline-flex p-3 sm:p-4 bg-emerald-500 rounded-2xl shadow-lg mb-4 sm:mb-6">
+              <Lock size={28} className="sm:w-9 sm:h-9 text-white" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-2">Definir Senha</h1>
+            <p className="text-xs sm:text-sm text-slate-500 font-medium">Configure sua palavra-passe de acesso</p>
+          </div>
+
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-lg border border-slate-200">
+            {errorMessage && (
+              <div className="mb-6 p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="text-rose-500 mt-0.5 flex-shrink-0" size={16} />
+                  <p className="text-rose-700 text-sm">{errorMessage}</p>
+                </div>
+              </div>
+            )}
+
+            {successMessage ? (
+              <div className="space-y-4">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <p className="text-emerald-700 text-sm">{successMessage}</p>
+                </div>
+                <Button onClick={() => setView('login')} className="w-full">
+                  Ir para login
+                </Button>
+              </div>
+            ) : (
+              <form className="space-y-4 sm:space-y-6" onSubmit={handleSubmit}>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Nova senha <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      name="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Mínimo 6 caracteres"
+                      className="w-full pl-10 pr-4 py-2.5 sm:py-3 bg-white border border-slate-300 focus:border-emerald-500 rounded-xl focus:ring-2 focus:ring-emerald-500/20 text-slate-900 outline-none transition-all text-sm"
+                      disabled={isLoading}
+                      required
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Confirmar senha <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      name="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Repita a senha"
+                      className="w-full pl-10 pr-4 py-2.5 sm:py-3 bg-white border border-slate-300 focus:border-emerald-500 rounded-xl focus:ring-2 focus:ring-emerald-500/20 text-slate-900 outline-none transition-all text-sm"
+                      disabled={isLoading}
+                      required
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 sm:py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/25 disabled:opacity-50"
+                >
+                  {isLoading ? 'Definindo...' : 'Definir senha'}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const LandingPage = () => (
     <div className="landing-multi-font min-h-screen bg-white flex flex-col">
       <nav className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-xl z-[100] border-b border-slate-200/60 h-16 sm:h-[72px]">
@@ -625,6 +731,7 @@ const LoginPage = () => {
 
   if (view === 'landing') return <LandingPage />;
   if (view === 'login') return <LoginPage />;
+  if (view === 'set-password') return <SetPasswordPage />;
 
   return (
     <div className="h-screen flex bg-[#f8fafc] dark:bg-slate-950 transition-all font-sans overflow-hidden">
@@ -663,7 +770,7 @@ const LoginPage = () => {
         </nav>
 
         <div className="p-4 lg:p-6 border-t border-slate-100 dark:border-slate-800">
-          <button onClick={() => { setUser(null); setView('login'); }} className="flex items-center gap-5 w-full px-5 py-4 text-slate-400 hover:text-rose-500 transition-all">
+          <button onClick={() => { setAuthToken(null); setUser(null); setView('login'); }} className="flex items-center gap-5 w-full px-5 py-4 text-slate-400 hover:text-rose-500 transition-all">
             <LogOut size={20} />
             {!isSidebarCollapsed && <span className="text-[11px] font-black uppercase tracking-widest">{t.logout}</span>}
           </button>
@@ -1019,14 +1126,30 @@ const LoginPage = () => {
               e.preventDefault();
               const fd = new FormData(e.target as HTMLFormElement);
               const newUser: User = { id: 'u-' + Math.random().toString(36).substr(2, 9), name: fd.get('name') as string, email: fd.get('email') as string, role: (fd.get('role') as UserRole) || UserRole.EMPLOYEE, position: (fd.get('position') as string) || '' };
-              
+              let createdUser = newUser;
+
               try {
-                await apiUsers.create(newUser);
+                const apiResponse = await apiUsers.create({
+                  name: newUser.name,
+                  email: newUser.email,
+                  role: newUser.role,
+                  position: newUser.position
+                });
+
+                if (apiResponse?.user) {
+                  createdUser = mapUserFromAPI(apiResponse.user);
+                } else if (apiResponse?.id) {
+                  createdUser = mapUserFromAPI(apiResponse);
+                }
+
+                if (apiResponse?.inviteLink) {
+                  logger.debug('User', 'Link de convite gerado', apiResponse.inviteLink);
+                }
               } catch (error) {
-                logger.warn('User', 'Erro ao criar utilizador na API, criando localmente...');
+                logger.warn('User', 'Erro ao criar utilizador na API, criando localmente...', error);
               }
               
-              saveUsers([...users, newUser]);
+              saveUsers([...users, createdUser]);
               setIsAddUserOpen(false);
             }}>
               <div className="space-y-4">
@@ -1034,6 +1157,7 @@ const LoginPage = () => {
                 <div><label className="text-[10px] font-black uppercase text-slate-400 block mb-1">{t.email}</label><input name="email" type="email" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" required /></div>
                 <div><label className="text-[10px] font-black uppercase text-slate-400 block mb-1">{t.position}</label><input name="position" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold" /></div>
                 <div><label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Função</label><select name="role" className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 font-bold"><option value={UserRole.EMPLOYEE}>Funcionário</option><option value={UserRole.ADMIN}>Administrador</option></select></div>
+                <p className="text-[10px] text-slate-400">Será enviado um link por email para definir a palavra-passe.</p>
               </div>
               <div className="flex gap-3 mt-6"><Button type="submit" className="flex-1">Adicionar</Button><Button type="button" variant="ghost" onClick={() => setIsAddUserOpen(false)}>{t.cancel}</Button></div>
             </form>

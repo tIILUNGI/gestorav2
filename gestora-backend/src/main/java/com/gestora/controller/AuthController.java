@@ -3,6 +3,7 @@ package com.gestora.controller;
 import com.gestora.config.JwtTokenProvider;
 import com.gestora.dto.LoginRequest;
 import com.gestora.dto.LoginResponse;
+import com.gestora.dto.SetPasswordRequest;
 import com.gestora.dto.UserDTO;
 import com.gestora.model.User;
 import com.gestora.service.UserService;
@@ -13,6 +14,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -72,5 +75,15 @@ public class AuthController {
         User user = userService.findByEmail(email)
             .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
         return ResponseEntity.ok(UserDTO.of(user));
+    }
+
+    @PostMapping("/set-password")
+    public ResponseEntity<?> setPassword(@RequestBody SetPasswordRequest request) {
+        try {
+            userService.completeInvite(request.getToken(), request.getPassword());
+            return ResponseEntity.ok(Map.of("success", true, "message", "Senha definida com sucesso"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Erro ao definir senha: " + e.getMessage()));
+        }
     }
 }

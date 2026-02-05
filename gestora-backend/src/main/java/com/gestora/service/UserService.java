@@ -1,11 +1,17 @@
 package com.gestora.service;
 
+import com.gestora.dto.InviteResponse;
+import com.gestora.dto.InviteUserRequest;
 import com.gestora.model.User;
 import com.gestora.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +24,17 @@ public class UserService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private EmailService emailService;
+
+    @Value("${app.frontend.base-url:http://localhost:5173}")
+    private String frontendBaseUrl;
+
+    @Value("${app.invite.expiry-hours:24}")
+    private long inviteExpiryHours;
+
+    private final SecureRandom secureRandom = new SecureRandom();
+
     public User createUser(String email, String password, String name) {
         if (userRepository.existsByEmail(email)) {
             throw new RuntimeException("Email já cadastrado");
@@ -27,6 +44,66 @@ public class UserService {
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(password));
         user.setName(name);
+
+        return userRepository.save(user);
+    }
+
+    public InviteResponse inviteUser(InviteUserRequest request) {
+        if (request == null || request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw new RuntimeException("Email é obrigatório");
+        }
+        String email = request.getEmail().trim().toLowerCase();
+        if (userRepository.existsByEmail(email)) {
+            throw new RuntimeException("Email já cadastrado");
+        }
+
+        String name = request.getName();
+        if (name == null || name.trim().isEmpty()) {
+            name = email.split("@")[0];
+        }
+
+        User.UserRole role = request.getRole() != null ? request.getRole() : User.UserRole.EMPLOYEE;
+
+        User user = new User();
+        user.setEmail(email);
+        user.setName(name);
+        user.setRole(role);
+        user.setPassword(passwordEncoder.encode(generateTempPassword()));
+
+        String token = generateInviteToken();
+        user.setInviteToken(token);
+        user.setInviteTokenExpiry(LocalDateTime.now().plusHours(inviteExpiryHours));
+
+        User saved = userRepository.save(user);
+
+        String inviteLink = buildInviteLink(token);
+        boolean emailSent = emailService.sendInviteEmail(email, inviteLink);
+
+        return InviteResponse.builder()
+            .user(com.gestora.dto.UserDTO.of(saved))
+            .emailSent(emailSent)
+            .inviteLink(inviteLink)
+            .build();
+    }
+
+    public User completeInvite(String token, String newPassword) {
+        if (token == null || token.trim().isEmpty()) {
+            throw new RuntimeException("Token inválido");
+        }
+        if (newPassword == null || newPassword.trim().length() < 6) {
+            throw new RuntimeException("Senha deve ter pelo menos 6 caracteres");
+        }
+
+        User user = userRepository.findByInviteToken(token)
+            .orElseThrow(() -> new RuntimeException("Token inválido"));
+
+        if (user.getInviteTokenExpiry() != null && user.getInviteTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Token expirado");
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setInviteToken(null);
+        user.setInviteTokenExpiry(null);
 
         return userRepository.save(user);
     }
@@ -62,5 +139,28 @@ public class UserService {
 
     public List<User> getAllUsers() {
         return userRepository.findAll();
+    }
+
+    private String generateInviteToken() {
+        byte[] bytes = new byte[32];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private String generateTempPassword() {
+        byte[] bytes = new byte[24];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private String buildInviteLink(String token) {
+        String base = frontendBaseUrl == null ? "" : frontendBaseUrl.trim();
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        if (base.isEmpty()) {
+            base = "http://localhost:5173";
+        }
+        return base + "/?invite=" + token;
     }
 }

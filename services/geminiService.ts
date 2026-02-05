@@ -1,8 +1,10 @@
-
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Initialize the Google GenAI client with the API key from environment variables.
-const ai = new GoogleGenerativeAI({ apiKey: process.env.API_KEY });
+// Verifique se a API_KEY está disponível
+const API_KEY = process.env.REACT_APP_GEMINI_API_KEY || process.env.API_KEY;
+
+// Inicialize apenas se tiver API key
+const ai = API_KEY ? new GoogleGenerativeAI({ apiKey: API_KEY }) : null;
 
 export const getSmartNotification = async (
   taskTitle: string, 
@@ -12,6 +14,11 @@ export const getSmartNotification = async (
   language: 'pt' | 'en'
 ): Promise<string> => {
   try {
+    // Se não tiver API key, use mensagens locais
+    if (!ai) {
+      return getLocalNotification(taskTitle, status, isOverdue, isNearDeadline, language);
+    }
+
     const prompt = `
       Task: "${taskTitle}"
       Current Status: ${status}
@@ -26,16 +33,41 @@ export const getSmartNotification = async (
       Return ONLY the message text.
     `;
 
-    // Use gemini-3-flash-preview for the notification generation task.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
 
-    // Access the .text property directly as per the guidelines.
-    return response.text?.trim() || "Notification update.";
+    return response.text?.trim() || getLocalNotification(taskTitle, status, isOverdue, isNearDeadline, language);
   } catch (error) {
     console.error("Gemini Error:", error);
-    return language === 'pt' ? "Atualização na tarefa." : "Task update.";
+    return getLocalNotification(taskTitle, status, isOverdue, isNearDeadline, language);
+  }
+};
+
+// Função local para fallback
+const getLocalNotification = (
+  taskTitle: string, 
+  status: string, 
+  isOverdue: boolean,
+  isNearDeadline: boolean,
+  language: 'pt' | 'en'
+): string => {
+  if (language === 'pt') {
+    if (isOverdue) return `🚨 ATENÇÃO: A tarefa "${taskTitle}" está ATRASADA! Por favor, conclua urgentemente.`;
+    if (isNearDeadline) return `⏰ PRAZO PRÓXIMO: A tarefa "${taskTitle}" está perto do prazo. Mantenha o foco!`;
+    if (status === 'FECHADO') return `✅ CONCLUÍDO: A tarefa "${taskTitle}" foi finalizada com sucesso.`;
+    if (status === 'TERMINADO') return `🎯 AGUARDANDO VALIDAÇÃO: "${taskTitle}" está pronta para revisão do administrador.`;
+    if (status === 'EM_ANDAMENTO') return `🚀 EM ANDAMENTO: A tarefa "${taskTitle}" está sendo executada.`;
+    if (status === 'ABERTO') return `📋 ABERTA: A tarefa "${taskTitle}" foi iniciada.`;
+    return `📝 ATUALIZAÇÃO: O estado da tarefa "${taskTitle}" mudou para ${status}.`;
+  } else {
+    if (isOverdue) return `🚨 ATTENTION: Task "${taskTitle}" is OVERDUE! Please complete urgently.`;
+    if (isNearDeadline) return `⏰ DEADLINE APPROACHING: Task "${taskTitle}" is near deadline. Stay focused!`;
+    if (status === 'FECHADO') return `✅ COMPLETED: Task "${taskTitle}" has been successfully finished.`;
+    if (status === 'TERMINADO') return `🎯 AWAITING VALIDATION: "${taskTitle}" is ready for admin review.`;
+    if (status === 'EM_ANDAMENTO') return `🚀 IN PROGRESS: Task "${taskTitle}" is being executed.`;
+    if (status === 'ABERTO') return `📋 OPENED: Task "${taskTitle}" has been started.`;
+    return `📝 UPDATE: Task "${taskTitle}" status changed to ${status}.`;
   }
 };

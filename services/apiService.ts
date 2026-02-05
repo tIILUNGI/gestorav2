@@ -6,7 +6,7 @@
 // Base URL configurable via Vite env `VITE_API_BASE_URL`.
 // Default points to production Fly.dev app. Ensure single `/api` context-path.
 const RAW_BASE = (typeof process !== 'undefined' && (process as any).env && (process as any).env.VITE_API_BASE_URL) || (typeof window !== 'undefined' && (window as any).VITE_API_BASE_URL) || 'https://ilungi-gestora-api.fly.dev';
-const API_BASE = RAW_BASE.replace(/\/$/, '') + '/api';
+const API_BASE = RAW_BASE.replace(/\/$/, '');
 
 // Tipo para armazenar token de autenticação
 let authToken: string | null = null;
@@ -103,6 +103,21 @@ export const apiAuth = {
       return data;
     } catch (error: any) {
       throw new Error(error.message || 'Erro ao registrar');
+    }
+  },
+
+  setPassword: async (token: string, password: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/auth/set-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token, password }),
+      });
+      return await handleResponse(response);
+    } catch (error: any) {
+      throw new Error(error.message || 'Erro ao definir senha');
     }
   },
 

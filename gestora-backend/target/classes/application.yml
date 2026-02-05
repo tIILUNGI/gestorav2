@@ -34,6 +34,18 @@ spring:
     servlet:
       path: /api
 
+  mail:
+    host: ${SPRING_MAIL_HOST:}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${SPRING_MAIL_SMTP_STARTTLS:true}
+
 server:
   port: ${SERVER_PORT:8080}
   servlet:
@@ -49,6 +61,12 @@ server:
 jwt:
   secret: ${JWT_SECRET:dev_secret_key_min_32_caracteres_here_ok_12345}
   expiration: ${JWT_EXPIRATION:86400000}
+
+app:
+  frontend:
+    base-url: ${APP_FRONTEND_BASE_URL:http://localhost:5173}
+  invite:
+    expiry-hours: ${APP_INVITE_EXPIRY_HOURS:24}
 
 logging:
   level:

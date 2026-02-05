@@ -1,5 +1,7 @@
 package com.gestora.controller;
 
+import com.gestora.dto.InviteResponse;
+import com.gestora.dto.InviteUserRequest;
 import com.gestora.dto.UserDTO;
 import com.gestora.model.User;
 import com.gestora.service.UserService;
@@ -28,6 +30,17 @@ public class UserController {
                 .map(UserDTO::of)
                 .collect(Collectors.toList())
         );
+    }
+
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> inviteUser(@RequestBody InviteUserRequest request) {
+        try {
+            InviteResponse response = userService.inviteUser(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
     }
 
     @GetMapping("/{id}")

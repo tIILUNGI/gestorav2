@@ -39,6 +39,11 @@ public class User {
     @Enumerated(EnumType.STRING)
     private UserRole role = UserRole.EMPLOYEE;
 
+    @Column(length = 120)
+    private String inviteToken;
+
+    private LocalDateTime inviteTokenExpiry;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
