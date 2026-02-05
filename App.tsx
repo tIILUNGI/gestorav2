@@ -44,7 +44,8 @@ import {
   ArrowUpRight,
   Pencil,
   Menu,
-  User as UserIcon
+  User as UserIcon,
+  UserPlus
 } from 'lucide-react';
 
 // --- Shared UI Components ---
@@ -473,8 +474,17 @@ const LoginPage = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
   const [forgotPasswordMessage, setForgotPasswordMessage] = useState<string | null>(null);
+  const [registerData, setRegisterData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [registerSuccess, setRegisterSuccess] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -518,6 +528,82 @@ const LoginPage = () => {
     }, 3000);
   };
 
+  // Handler para registo de novo utilizador
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegisterError(null);
+    
+    // Validações
+    if (!registerData.name.trim()) {
+      setRegisterError('Por favor, preencha o nome.');
+      return;
+    }
+    
+    if (!registerData.email.trim()) {
+      setRegisterError('Por favor, preencha o email.');
+      return;
+    }
+    
+    if (!registerData.password || registerData.password.length < 6) {
+      setRegisterError('A senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    
+    if (registerData.password !== registerData.confirmPassword) {
+      setRegisterError('As senhas não coincidem.');
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      // Usar o endpoint de registo da API
+      const response = await apiAuth.register(registerData.email, registerData.name, registerData.password);
+      
+      setRegisterSuccess(true);
+      
+      // Após registo, fazer login automaticamente
+      setTimeout(async () => {
+        try {
+          const loginResponse = await apiAuth.login(registerData.email, registerData.password);
+          const token = loginResponse.token || loginResponse.jwt;
+          if (token) {
+            setAuthToken(token);
+            const apiUser = loginResponse.user || loginResponse;
+            const normalizedUser = {
+              ...apiUser,
+              id: apiUser?.id ?? apiUser?.userId,
+              email: apiUser?.email ?? registerData.email,
+              name: apiUser?.name ?? apiUser?.username ?? registerData.name,
+              role: apiUser?.role ?? UserRole.EMPLOYEE
+            };
+            const mappedUser = mapUserFromAPI(normalizedUser);
+            setUser(mappedUser);
+            setShowRegister(false);
+            setView('app');
+            await loadDataFromAPI(mappedUser);
+          }
+        } catch (loginError) {
+          // Se falhar login automático, mostra mensagem de sucesso e pede para fazer login
+          setRegisterSuccess(true);
+          setRegisterError(null);
+        }
+      }, 2000);
+      
+    } catch (error: any) {
+      setRegisterError(error.message || 'Erro ao criar conta. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handler para alterar dados do formulário de registo
+  const handleRegisterInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setRegisterData(prev => ({ ...prev, [name]: value }));
+    if (registerError) setRegisterError(null);
+  };
+
   // Carregar email salvo ao iniciar (se remember-me estava ativo)
   useEffect(() => {
     const savedEmail = localStorage.getItem('gestora_remember_email');
@@ -558,7 +644,7 @@ const LoginPage = () => {
     setIsLoading(true);
     
     try {
-      // Tentar login com a API
+      // Login com a API
       const apiResponse = await apiAuth.login(formData.email, formData.password);
       const token = apiResponse.token || apiResponse.jwt;
 
@@ -577,33 +663,21 @@ const LoginPage = () => {
       };
       const mappedUser = mapUserFromAPI(normalizedUser);
       setUser(mappedUser);
+      
+      // Sempre carregar dados da API após login
+      await loadDataFromAPI(mappedUser);
+      
       if (mappedUser.mustChangePassword) {
         setView('app');
         setActiveTab('profile');
       } else {
         setView('app');
-        await loadDataFromAPI(mappedUser);
       }
     } catch (apiError: any) {
-      logger.warn('Auth', 'API login falhou, tentando login local...', apiError);
-      // Fallback local
-      const foundUser = users.find(u => u.email.toLowerCase() === formData.email.toLowerCase());
-      if (foundUser && foundUser.localPassword === formData.password) {
-        const token = Math.random().toString(36).substr(2, 12);
-        setAuthToken(token);
-        setUser(foundUser);
-        const mustChange = foundUser.mustChangePassword ?? !!foundUser.localPassword;
-        if (mustChange) {
-          setView('app');
-          setActiveTab('profile');
-        } else {
-          setView('app');
-        }
-      } else {
-        setAuthToken(null);
-        setUser(null);
-        setErrorMessage(getAuthErrorMessage(apiError));
-      }
+      logger.error('Auth', 'Login na API falhou', apiError);
+      setAuthToken(null);
+      setUser(null);
+      setErrorMessage(getAuthErrorMessage(apiError));
     } finally {
       setIsLoading(false);
     }
@@ -732,6 +806,21 @@ const LoginPage = () => {
             </button>
           </form>
 
+          {/* Link para registar */}
+          <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-100 text-center">
+            <p className="text-sm text-slate-500">
+              Não tem uma conta?
+            </p>
+            <button
+              onClick={() => setShowRegister(true)}
+              disabled={isLoading}
+              className="text-sm text-emerald-600 hover:text-emerald-700 font-medium disabled:text-slate-400 transition-colors flex items-center justify-center gap-2 mx-auto mt-2"
+            >
+              <UserPlus size={16} />
+              Criar conta
+            </button>
+          </div>
+
           {/* Link para voltar */}
           <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-slate-100 text-center">
             <button
@@ -812,6 +901,125 @@ const LoginPage = () => {
                 Cancelar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Registo */}
+      {showRegister && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-slate-900">Criar Nova Conta</h3>
+              <button 
+                onClick={() => { setShowRegister(false); setRegisterData({ name: '', email: '', password: '', confirmPassword: '' }); setRegisterError(null); }}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            {registerSuccess ? (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 size={32} className="text-emerald-600" />
+                </div>
+                <h4 className="text-lg font-bold text-slate-900 mb-2">Conta Criada!</h4>
+                <p className="text-slate-600">A redirecionar para o sistema...</p>
+              </div>
+            ) : (
+              <form onSubmit={handleRegister} className="space-y-4">
+                {registerError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                    <p className="text-rose-700 text-sm">{registerError}</p>
+                  </div>
+                )}
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Nome Completo <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={registerData.name}
+                    onChange={handleRegisterInputChange}
+                    placeholder="Seu nome completo"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Email <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={registerData.email}
+                    onChange={handleRegisterInputChange}
+                    placeholder="nome@empresa.com"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Senha <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    name="password"
+                    value={registerData.password}
+                    onChange={handleRegisterInputChange}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                    required
+                    minLength={6}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Confirmar Senha <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    value={registerData.confirmPassword}
+                    onChange={handleRegisterInputChange}
+                    placeholder="Confirme sua senha"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+                    required
+                  />
+                </div>
+                
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-400 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      A criar conta...
+                    </>
+                  ) : (
+                    'Criar Conta'
+                  )}
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => { setShowRegister(false); setRegisterData({ name: '', email: '', password: '', confirmPassword: '' }); setRegisterError(null); }}
+                  className="w-full py-2 text-slate-500 hover:text-slate-700 text-sm"
+                >
+                  Cancelar
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}
