@@ -141,6 +141,35 @@ export const apiAuth = {
     if (res.status === 404 || res.status === 401) return null;
     return handleResponse(res);
   },
+
+  // Recuperação de senha
+  forgotPassword: async (email: string) => {
+    const response = await fetch(`${API_BASE}/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    return handleResponse(response);
+  },
+
+  resetPassword: async (token: string, newPassword: string) => {
+    const response = await fetch(`${API_BASE}/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, newPassword }),
+    });
+    return handleResponse(response);
+  },
+
+  // Mudança de senha obrigatória no primeiro login
+  changeFirstPassword: async (token: string, newPassword: string, confirmPassword: string) => {
+    const response = await fetch(`${API_BASE}/auth/change-first-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, newPassword, confirmPassword }),
+    });
+    return handleResponse(response);
+  },
 };
 
 // =================== TASKS (USER) ===================
@@ -238,9 +267,8 @@ export const apiAdminUsers = {
     return handleResponse(res);
   },
 
-  create: async (data: { name: string; email: string; phone?: string; role?: string; tempPassword?: string }) => {
+  create: async (data: { name: string; email: string; phone?: string; position?: string; role?: string; tempPassword?: string }) => {
     // O backend gera a senha automaticamente, não precisamos enviar
-    // Mas podemos enviar phone e role
     const response = await fetch(`${API_BASE}/admin/users`, {
       method: "POST",
       headers: getHeaders(),
@@ -248,7 +276,8 @@ export const apiAdminUsers = {
         name: data.name,
         email: data.email,
         phone: data.phone || "",
-        role: data.role || "USER"
+        position: data.position || "",
+        role: data.role || "EMPLOYEE"
       }),
     });
     return handleResponse(response);

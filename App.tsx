@@ -70,9 +70,10 @@ const Button = ({ children, onClick, variant = 'primary', className = '', type =
 };
 
 export default function App() {
-  const [view, setView] = useState<'landing' | 'login' | 'app' | 'set-password' | 'force-password'>('login');
+  const [view, setView] = useState<'landing' | 'login' | 'app' | 'set-password' | 'force-password' | 'reset-password'>('login');
   const [user, setUser] = useState<User | null>(null);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [resetToken, setResetToken] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [lang, setLang] = useState<Language>('pt');
@@ -172,6 +173,18 @@ export default function App() {
       setInviteToken(invite);
       setUser(null);
       setView('set-password');
+      return;
+    }
+    
+    // Verificar token de reset de senha
+    const reset = new URLSearchParams(window.location.search).get('token');
+    if (reset) {
+      setResetToken(reset);
+      setUser(null);
+      setView('reset-password');
+      // Limpar a URL
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
       return;
     }
 
@@ -540,14 +553,20 @@ const LoginPage = () => {
       return;
     }
     
-    // Simular envio de email de recuperação
-    setForgotPasswordMessage(`Um email de recuperação foi enviado para ${forgotPasswordEmail}`);
-    // Nota: Implementar com a API quando disponível
-    setTimeout(() => {
-      setShowForgotPassword(false);
-      setForgotPasswordEmail('');
-      setForgotPasswordMessage(null);
-    }, 3000);
+    setForgotPasswordMessage('A enviar email de recuperação...');
+    
+    try {
+      await apiAuth.forgotPassword(forgotPasswordEmail);
+      setForgotPasswordMessage(`Um email de recuperação foi enviado para ${forgotPasswordEmail}.\nVerifique a sua caixa de entrada.`);
+      // Fechar após 5 segundos
+      setTimeout(() => {
+        setShowForgotPassword(false);
+        setForgotPasswordEmail('');
+        setForgotPasswordMessage(null);
+      }, 5000);
+    } catch (error: any) {
+      setForgotPasswordMessage(error?.message || 'Erro ao enviar email de recuperação.');
+    }
   };
 
   // Handler para registo de novo utilizador
@@ -689,9 +708,12 @@ const LoginPage = () => {
       // Sempre carregar dados da API após login
       await loadDataFromAPI(mappedUser);
       
+      // Se for primeira senha, vai para o perfil e não pode sair enquanto não alterar
       if (mappedUser.mustChangePassword) {
         setView('app');
         setActiveTab('profile');
+        // Não permite logout enquanto não mudar a senha
+        localStorage.setItem('forcedPasswordChange', 'true');
       } else {
         setView('app');
       }
@@ -1083,10 +1105,9 @@ const LoginPage = () => {
 
       setIsLoading(true);
       try {
-        // A nova API usa PATCH /users/:id/password após login
-        // Para fluxo de convite, o admin cria user com senha temporária
-        // e o user altera após primeiro login
-        setSuccessMessage('Para alterar a senha, faça login e use a opção no perfil.');
+        // Usar a API changeFirstPassword para alterar senha no primeiro login
+        await apiAuth.changeFirstPassword('', password, confirmPassword);
+        setSuccessMessage('Senha definida com sucesso!\n\nAgora pode fazer login.');
         setInviteToken(null);
         if (typeof window !== 'undefined') {
           const cleanUrl = window.location.origin + window.location.pathname;
@@ -1184,6 +1205,136 @@ const LoginPage = () => {
     );
   };
 
+  // ==================== RESET PASSWORD PAGE ====================
+  const ResetPasswordPage = () => {
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setErrorMessage(null);
+      setSuccessMessage(null);
+
+      if (!resetToken) {
+        setErrorMessage('Token de recuperação inválido ou expirado.');
+        return;
+      }
+
+      if (!password.trim()) {
+        setErrorMessage('Por favor, preencha a nova senha.');
+        return;
+      }
+
+      if (password.trim().length < 6) {
+        setErrorMessage('A senha deve ter pelo menos 6 caracteres.');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setErrorMessage('As senhas não coincidem.');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        await apiAuth.resetPassword(resetToken, password);
+        setSuccessMessage('Senha redefinida com sucesso!\n\nPode fazer login com a nova senha.');
+        setResetToken(null);
+      } catch (error: any) {
+        setErrorMessage(error?.message || 'Falha ao redefinir a senha. O token pode estar expirado.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 sm:p-6 font-sans">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8 sm:mb-10">
+            <div className="inline-flex p-3 sm:p-4 bg-amber-500 rounded-2xl shadow-lg mb-4 sm:mb-6">
+              <Lock size={28} className="sm:w-9 sm:h-9 text-white" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mb-2">Recuperação de Senha</h1>
+            <p className="text-xs sm:text-sm text-slate-500 font-medium">Digite sua nova palavra-passe</p>
+          </div>
+
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-lg border border-slate-200">
+            {errorMessage && (
+              <div className="mb-6 p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="text-rose-500 mt-0.5 flex-shrink-0" size={16} />
+                  <p className="text-rose-700 text-sm">{errorMessage}</p>
+                </div>
+              </div>
+            )}
+
+            {successMessage ? (
+              <div className="space-y-4">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <p className="text-emerald-700 text-sm whitespace-pre-line">{successMessage}</p>
+                </div>
+                <Button onClick={() => { setView('login'); }} className="w-full">
+                  Ir para Login
+                </Button>
+              </div>
+            ) : (
+              <form className="space-y-4 sm:space-y-6" onSubmit={handleSubmit}>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Nova senha <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      name="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Mínimo 6 caracteres"
+                      className="w-full pl-10 pr-4 py-2.5 sm:py-3 bg-white border border-slate-300 focus:border-amber-500 rounded-xl focus:ring-2 focus:ring-amber-500/20 text-slate-900 outline-none transition-all text-sm"
+                      disabled={isLoading}
+                      required
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Confirmar senha <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      name="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Repita a nova senha"
+                      className="w-full pl-10 pr-4 py-2.5 sm:py-3 bg-white border border-slate-300 focus:border-amber-500 rounded-xl focus:ring-2 focus:ring-amber-500/20 text-slate-900 outline-none transition-all text-sm"
+                      disabled={isLoading}
+                      required
+                    />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 sm:py-3.5 rounded-xl transition-all shadow-lg shadow-amber-500/25 disabled:opacity-50"
+                >
+                  {isLoading ? 'Redefinindo...' : 'Redefinir Senha'}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const LandingPage = () => (
     <div className="landing-multi-font min-h-screen bg-white flex flex-col">
       <nav className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-xl z-[100] border-b border-slate-200/60 h-16 sm:h-[72px]">
@@ -1237,6 +1388,7 @@ const LoginPage = () => {
   if (view === 'landing') return <LandingPage />;
   if (view === 'login') return <LoginPage />;
   if (view === 'set-password') return <SetPasswordPage />;
+  if (view === 'reset-password') return <ResetPasswordPage />;
 
   return (
     <div className="h-screen flex bg-[#f8fafc] dark:bg-slate-950 transition-all font-sans overflow-hidden">
@@ -1807,6 +1959,7 @@ const LoginPage = () => {
                 const apiResponse = await apiAdminUsers.create({
                   name: newUser.name,
                   email: newUser.email,
+                  position: newUser.position,
                   role: newUser.role
                 });
 

@@ -32,6 +32,9 @@ public class User {
     @Column(nullable = false)
     private String name;
 
+    @Column(length = 255)
+    private String position;
+
     @Column(length = 500)
     private String avatar;
 

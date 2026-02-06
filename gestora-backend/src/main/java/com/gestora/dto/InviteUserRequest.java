@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 public class InviteUserRequest {
     private String email;
     private String name;
+    private String position;
     private User.UserRole role;
     private String tempPassword;
 }

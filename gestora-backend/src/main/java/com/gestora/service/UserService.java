@@ -72,6 +72,7 @@ public class UserService {
         User user = new User();
         user.setEmail(email);
         user.setName(name);
+        user.setPosition(request.getPosition());
         user.setRole(role);
         user.setPassword(passwordEncoder.encode(tempPassword.trim()));
         user.setMustChangePassword(true);
@@ -140,6 +141,9 @@ public class UserService {
         }
         if (userDetails.getRole() != null) {
             user.setRole(userDetails.getRole());
+        }
+        if (userDetails.getPosition() != null) {
+            user.setPosition(userDetails.getPosition());
         }
 
         return userRepository.save(user);
