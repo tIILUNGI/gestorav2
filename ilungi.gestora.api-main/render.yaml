@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: ilungi-gestora-api
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: são-paulo
+    plan: free  # Comece com free, upgrade se necessário
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: JAVA_OPTS
+        value: >
+          -Dspring.jpa.open-in-view=false
+          -Dspring.main.banner-mode=off
+          -Dlogging.level.root=WARN
+          -Dlogging.level.org.springframework=WARN
+          -Dlogging.level.org.hibernate=ERROR
+      - key: SPRING_DATASOURCE_URL
+        fromDatabase:
+          name: ilungi-db
+          property: connectionString
+      - key: SPRING_DATASOURCE_HIKARI_MAXIMUM-POOL-SIZE
+        value: "3"  # Conexões mínimas para free tier
+      - key: SERVER_TOMCAT_MAX_THREADS
+        value: "25"  # Threads reduzidas
+    healthCheckPath: /actuator/health
+    healthCheckTimeoutSec: 10
+    initialDelaySec: 120  # Spring Boot demora para iniciar
+    autoDeploy: true
+    # Otimização de build
+    buildFilter:
+      paths:
+        - "**"
+      ignorePaths:
+        - ".git/**"
+        - "**/node_modules/**"
+        - "**/target/**"
+        - "**/build/**"
+        - "*.md"
+        - "*.log"
+
+databases:
+  - name: ilungi-db
+    databaseName: gestora_db
+    plan: free
+    region: são-paulo
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: "Allow all for Render services"
